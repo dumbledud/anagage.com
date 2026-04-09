@@ -4266,49 +4266,70 @@ function HeelSplitterGame() {
             return;
           }
 
-          // Flee movement: update every ~8 ticks or when close
+          // Grid-snapped stepping: slower, bounded, attainable. Allies move
+          // exactly one cell per step and are clamped to the play field so
+          // they can never fly off. Tunnel rows/cols are honored via canMove.
           ally.moveTimer = (ally.moveTimer || 0) + dt;
-          var moveInterval = dist2 < 60 ? 4 : 12; // flee faster when player close
+          var moveInterval = dist2 < CELL*3 ? 14 : 22; // ms-ish ticks; slower overall
           if (ally.moveTimer >= moveInterval) {
             ally.moveTimer = 0;
-            var speed = ally.fleeSpeed;
+            // Snap current cell from pixel in case of prior drift
+            ally.cx = Math.round((ally.cpx - 11) / 22);
+            ally.cy = Math.round((ally.cpy - 11) / 22);
+            // Clamp the snapped cell to the play field
+            if (ally.cx < 0) ally.cx = 0;
+            if (ally.cx >= COLS) ally.cx = COLS - 1;
+            if (ally.cy < 0) ally.cy = 0;
+            if (ally.cy >= ROWS) ally.cy = ROWS - 1;
+
             var ndx = ally.dx, ndy = ally.dy;
 
-            if (dist2 < 80) {
-              // Flee: pick direction away from player
-              var fx = -(adx > 0 ? 1 : -1);
-              var fy = -(ady > 0 ? 1 : -1);
-              // Try preferred flee direction
-              var attempts = [[fx,0],[0,fy],[-fx,0],[0,-fy],[fx,fy],[-fx,-fy]];
-              var moved = false;
-              for (var ai = 0; ai < attempts.length; ai++) {
-                var td = attempts[ai];
-                var nc = Math.round((ally.cpx + td[0]*22 - 11) / 22);
-                var nr = Math.round((ally.cpy + td[1]*22 - 11) / 22);
-                if (nc >= 0 && nc < 21 && nr >= 0 && nr < 19 && (st.maze[nr]||[])[nc] !== 1) {
-                  ndx = td[0]; ndy = td[1]; moved = true; break;
-                }
-              }
-              if (!moved) { ndx = -ally.dx; ndy = -ally.dy; }
+            // Candidate direction list: prefer fleeing when player is near,
+            // otherwise wander, but ALWAYS validate via canMove so we never
+            // pick an out-of-bounds or wall cell.
+            var candidates;
+            if (dist2 < CELL*4) {
+              var fx = adx === 0 ? 0 : (adx > 0 ? -1 : 1);
+              var fy = ady === 0 ? 0 : (ady > 0 ? -1 : 1);
+              candidates = [[fx,0],[0,fy],[-fx,0],[0,-fy],[1,0],[-1,0],[0,1],[0,-1]];
             } else {
-              // Wander randomly
-              if (Math.random() < 0.35) {
+              if (Math.random() < 0.25) {
                 var dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-                var d = dirs[Math.floor(Math.random()*4)];
-                var nc2 = ally.cx + d[0], nr2 = ally.cy + d[1];
-                if (nc2 >= 0 && nc2 < 21 && nr2 >= 0 && nr2 < 19 && (st.maze[nr2]||[])[nc2] !== 1) {
-                  ndx = d[0]; ndy = d[1];
-                }
+                var pick = dirs[Math.floor(Math.random()*4)];
+                candidates = [pick, [ally.dx, ally.dy], [1,0],[-1,0],[0,1],[0,-1]];
+              } else {
+                candidates = [[ally.dx, ally.dy],[1,0],[-1,0],[0,1],[0,-1]];
               }
             }
 
-            // Move pixel position
-            var newCpx = ally.cpx + ndx * speed * 22 * 0.18;
-            var newCpy = ally.cpy + ndy * speed * 22 * 0.18;
-            ally.cpx = newCpx; ally.cpy = newCpy;
-            ally.cx = Math.round((ally.cpx - 11) / 22);
-            ally.cy = Math.round((ally.cpy - 11) / 22);
-            ally.dx = ndx || ally.dx; ally.dy = ndy || ally.dy;
+            var chosen = null;
+            for (var ai = 0; ai < candidates.length; ai++) {
+              var td = candidates[ai];
+              if (!td[0] && !td[1]) continue;
+              var nc = ally.cx + td[0];
+              var nr = ally.cy + td[1];
+              if (canMove(st.maze, nc, nr)) {
+                chosen = { dx: td[0], dy: td[1], nc: nc, nr: nr };
+                break;
+              }
+            }
+
+            if (chosen) {
+              // Tunnel wrap: if the candidate stepped off the grid via a
+              // tunnel row/col, wrap to the opposite side so allies stay
+              // reachable rather than stranded outside.
+              if (chosen.nc < 0) chosen.nc = COLS - 1;
+              else if (chosen.nc >= COLS) chosen.nc = 0;
+              if (chosen.nr < 0) chosen.nr = ROWS - 1;
+              else if (chosen.nr >= ROWS) chosen.nr = 0;
+
+              ally.cx = chosen.nc;
+              ally.cy = chosen.nr;
+              ally.cpx = ally.cx * 22 + 11;
+              ally.cpy = ally.cy * 22 + 11;
+              ally.dx = chosen.dx;
+              ally.dy = chosen.dy;
+            }
           }
         });
         // Move ghosts
