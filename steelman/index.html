@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Common Ground Finder — Super Edition</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0e0c;--s1:#181714;--s2:#201e1b;--s3:#272420;
+  --bd:rgba(255,255,255,0.07);--bda:rgba(255,255,255,0.13);
+  --tx:#ede8de;--mu:#8a8278;--dm:#4a4540;
+  --gd:#c9a84c;--gl:#e8c87a;--gdim:rgba(201,168,76,0.1);
+  --red:#e87a7a;--grn:#5cb87a;--blue:#6a9fd8;--purple:#b89ae8;--teal:#5ec4b6;
+  --nav:#141210;
+}
+html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans','Segoe UI',system-ui,sans-serif;font-size:15px}
+input[type=range]{-webkit-appearance:none;height:6px;border-radius:3px;background:var(--s3);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;cursor:pointer}
+textarea:focus,input:focus{border-color:var(--gd)!important}
+.serif{font-family:'Playfair Display','Georgia',serif}
+.mono{font-family:'IBM Plex Mono',monospace}
+.label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dm);margin-bottom:6px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+"use strict";
+const e=React.createElement,{useState,useEffect,useRef,useCallback}=React;
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────
+const SK="cgf_super";
+const db={
+  save(v){try{localStorage.setItem(SK,JSON.stringify(v))}catch(e){}},
+  load(){try{const r=localStorage.getItem(SK);return r?JSON.parse(r):null}catch(e){return null}}
+};
+
+// ─── AI CALLS ─────────────────────────────────────────────────────────────
+function getKey(){return localStorage.getItem("cgf_api_key")||""}
+
+async function streamAI(sys,user,onChunk){
+  const key=getKey();
+  if(!key)throw new Error("No API key set. Go to Settings tab.");
+  const r=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2048,stream:true,system:sys,messages:[{role:"user",content:user}]})
+  });
+  if(!r.ok){const t=await r.text();throw new Error("HTTP "+r.status+": "+t.slice(0,200))}
+  const reader=r.body.getReader(),dec=new TextDecoder();
+  let full="",buf="";
+  while(true){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split("\n");buf=lines.pop();
+    for(const line of lines){
+      if(!line.startsWith("data: "))continue;
+      const raw=line.slice(6).trim();
+      if(raw==="[DONE]")continue;
+      try{
+        const evt=JSON.parse(raw);
+        if(evt.type==="content_block_delta"&&evt.delta&&evt.delta.text){full+=evt.delta.text;onChunk(full)}
+        if(evt.type==="error")throw new Error(evt.error?.message||"Stream error");
+      }catch(ex){if(!ex.message?.includes("JSON"))throw ex}
+    }
+  }
+  if(!full)throw new Error("No content streamed");
+  return full;
+}
+
+async function callAI(sys,user){
+  const key=getKey();
+  if(!key)throw new Error("No API key set. Go to Settings tab.");
+  const r=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2048,system:sys,messages:[{role:"user",content:user}]})
+  });
+  const text=await r.text();
+  if(!text)throw new Error("Empty response");
+  let data;
+  try{data=JSON.parse(text)}catch(ex){throw new Error("Parse failed: "+text.slice(0,120))}
+  if(data.error)throw new Error(data.error.message);
+  if(!data.content||!data.content[0])throw new Error("No content");
+  return data.content[0].text;
+}
+
+async function callAIJSON(sys,user){
+  const key=getKey();
+  if(!key)throw new Error("No API key set. Go to Settings tab.");
+  const r=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1024,system:sys,messages:[{role:"user",content:user}]})
+  });
+  const d=await r.json();
+  if(d.error)throw new Error(d.error.message);
+  const txt=(d.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("").replace(/```json|```/g,"").trim();
+  return JSON.parse(txt);
+}
+
+// ─── HARM DATA ────────────────────────────────────────────────────────────
+const INIT_HARMS=[
+  {id:1,cat:"Behavioral",li:95,sv:90,pr:95,label:"Verbal escalation and dominating presence",
+    actions:[{id:"1a",on:true,st:90,txt:"Step away when voice starts to rise"},{id:"1b",on:true,st:90,txt:"Zero raised voice -- not once"},{id:"1c",on:true,st:80,txt:"Self-report any escalation that day, unprompted"},{id:"1d",on:false,st:70,txt:"Weekly emotional regulation log shared with Tori"},{id:"1e",on:false,st:65,txt:"Anger/regulation therapy within 30 days"}]},
+  {id:2,cat:"Relational",li:90,sv:88,pr:92,label:"Dismissing perspective instead of listening",
+    actions:[{id:"2a",on:true,st:90,txt:"Listen fully before any response -- no rebuttal during"},{id:"2b",on:true,st:85,txt:"Reflect back what was said before adding perspective"},{id:"2c",on:true,st:80,txt:"No arguing feelings vs facts"},{id:"2d",on:false,st:70,txt:"Ask one clarifying question before responding"},{id:"2e",on:false,st:65,txt:"Communication coaching -- 60 days"}]},
+  {id:3,cat:"Emotional",li:92,sv:85,pr:90,label:"Persistent disrespect and dismissiveness",
+    actions:[{id:"3a",on:true,st:90,txt:"No eye-rolling, sighing, or contemptuous gestures"},{id:"3b",on:true,st:85,txt:"Active daily warmth -- not just neutrality"},{id:"3c",on:true,st:80,txt:"When contempt appears, stop and repair same day"},{id:"3d",on:false,st:70,txt:"Monthly: Tori rates the month, Chris listens"},{id:"3e",on:false,st:65,txt:"Written acknowledgment of disrespectful incidents"}]},
+  {id:4,cat:"Behavioral",li:90,sv:88,pr:90,label:"Repeatedly crossing stated limits",
+    actions:[{id:"4a",on:true,st:95,txt:"Tori states a limit once -- honored immediately"},{id:"4b",on:true,st:90,txt:"No contacting Tori's friends about the relationship"},{id:"4c",on:true,st:85,txt:"When limit crossed, name it that day"},{id:"4d",on:false,st:75,txt:"Written list of known limits, reviewed monthly"},{id:"4e",on:false,st:65,txt:"Named accountability partner if limits are crossed"}]},
+  {id:5,cat:"Emotional",li:88,sv:85,pr:88,label:"Using emotional pressure as control",
+    actions:[{id:"5a",on:true,st:90,txt:"If Tori feels pressured, Chris stops and creates space"},{id:"5b",on:true,st:85,txt:"No emotional intensity to win arguments"},{id:"5c",on:true,st:80,txt:"Individual therapy -- emotional regulation"},{id:"5d",on:false,st:70,txt:"Safe word system -- either party calls timeout"},{id:"5e",on:false,st:65,txt:"Any escalating conversation restarts next day"}]},
+  {id:6,cat:"Household",li:95,sv:75,pr:82,label:"Failure to maintain household responsibilities",
+    actions:[{id:"6a",on:true,st:85,txt:"Chris's areas cleaned daily before work"},{id:"6b",on:true,st:85,txt:"9/5/2022 responsibilities list as baseline"},{id:"6c",on:true,st:80,txt:"Tori does not ask twice for any household item"},{id:"6d",on:false,st:70,txt:"Weekly household checklist shared with Tori"},{id:"6e",on:false,st:65,txt:"Give advance notice if failing a task"}]},
+  {id:7,cat:"Parenting",li:88,sv:80,pr:85,label:"Inconsistent follow-through on parenting duties",
+    actions:[{id:"7a",on:true,st:85,txt:"Morning and bedtime routines: full participation"},{id:"7b",on:true,st:80,txt:"20-30 min reading with each child daily"},{id:"7c",on:true,st:80,txt:"Give advance notice if missing a duty"},{id:"7d",on:false,st:70,txt:"Quarterly parenting check-in with Tori"},{id:"7e",on:false,st:65,txt:"Kids schedules managed by Chris, not Tori"}]},
+  {id:8,cat:"Relational",li:85,sv:88,pr:88,label:"Pattern of not following through on commitments",
+    actions:[{id:"8a",on:true,st:90,txt:"When Chris slips, he names it before Tori catches it"},{id:"8b",on:true,st:85,txt:"No minimizing -- slip named, owned, corrected"},{id:"8c",on:true,st:80,txt:"Visible accountability log shared weekly"},{id:"8d",on:false,st:70,txt:"Third party receives weekly accountability report"},{id:"8e",on:false,st:65,txt:"90-day verified structure before relaxation"}]},
+  {id:9,cat:"Emotional",li:85,sv:80,pr:82,label:"Externalizing personal stress onto partner",
+    actions:[{id:"9a",on:true,st:88,txt:"Therapy for anxiety -- Chris's to carry, not Tori's"},{id:"9b",on:true,st:80,txt:"When anxious, name it -- don't externalize"},{id:"9c",on:true,st:75,txt:"No anxious spiraling in front of children"},{id:"9d",on:false,st:70,txt:"Daily regulation practice"},{id:"9e",on:false,st:60,txt:"Signal word when overwhelmed"}]},
+  {id:10,cat:"Relational",li:85,sv:72,pr:75,label:"Applying different standards to self vs partner",
+    actions:[{id:"10a",on:true,st:80,txt:"Hold self to same standards applied to Tori"},{id:"10b",on:true,st:75,txt:"No stonewalling -- name when he'll return"},{id:"10c",on:false,st:70,txt:"Monthly: Tori names a double standard"},{id:"10d",on:false,st:65,txt:"Written quarterly self-assessment on fairness"},{id:"10e",on:false,st:60,txt:"Therapist mediates double standard disputes"}]}
+];
+
+const CAT_C={Behavioral:"#e87a7a",Emotional:"#e8a87a",Relational:"#b89ae8",Household:"#7aaae8",Parenting:"#7ae89a"};
+
+function calcScore(harms){return Math.round(harms.reduce(function(s,h){return s+(h.li/100)*(h.sv/100)*(h.pr/100)},0)/harms.length*100)}
+
+function buildBlock(harms){
+  return harms.map(function(h,i){
+    var acts=h.actions.filter(function(a){return a.on}).map(function(a){return"    - "+a.txt+" ["+a.st+"%]"}).join("\n");
+    return(i+1)+". ["+h.cat+"] "+h.label+" (L:"+h.li+" S:"+h.sv+" P:"+h.pr+")"+(acts?"\n"+acts:"");
+  }).join("\n\n");
+}
+
+function harmSummary(harms){
+  return harms.map(function(h,i){return(i+1)+". ["+h.cat+"] "+h.label+" | L:"+h.li+"% S:"+h.sv+" P:"+h.pr}).join("\n");
+}
+
+// ─── SYSTEM PROMPTS ───────────────────────────────────────────────────────
+const SYS={
+  settlement:"You are a settlement analyst for a spousal dispute. The offending party wrote an album diagnosing his failures: he chose precision over presence, lawyered instead of listened, won arguments and lost the relationship. He has self-awareness but has not formally asked for forgiveness with a plan. Analyze the harm parameters and provide: (1) weighted harm assessment, (2) floor outcome -- minimum behavioral change starting today, (3) ceiling outcome -- maximum reasonable outcome including in-home separation structure with shared space rules, separate sleeping, defined check-in cadence, co-parenting protocols, and re-integration criteria, (4) most likely middle ground, (5) 3 most critical accountability actions, (6) non-monetary remedies that matter most. Direct and specific. Under 500 words.",
+  apology:"You are an expert in restorative justice. The offending party has written songs with lines like: I chose precision over presence, I won the point and still we lost, I named the rule forgot the cost, patterns over phrases impact over intent. He understands his failure intellectually but has not asked for forgiveness with a plan. Write a two-part apology. PART 1: acknowledge the pattern not incidents, name the physical and mental toll, state intent does not erase impact, acknowledge boundary breaking despite stated limits, commit that change starts today not eventually. PART 2: specific verifiable commitments per harm shown, household responsibilities honored, no more lawyering at home, trust rebuilt with evidence. Tone: earned and genuine, not performed. Under 400 words.",
+  mediate:"You are a skilled neutral mediator. The husband (Chris) has a 3-5 year harm pattern and deep theological self-awareness -- he has written songs about choosing precision over presence, lawyering instead of listening, and knowing the pattern but not yet formally asking for forgiveness with a plan. The wife (Tori) owns the home and needs to see behavioral change before deciding. Non-negotiable: if abusive behavior continues he cannot stay. Silver bullet: stop treating Tori badly starting today. Surface interests, find common ground, hold both the harm and the love. Under 250 words.",
+  chris:"You are a private consigliere for Chris. He wrote a whole album diagnosing his failures -- he knows he chose precision over presence, lawyered instead of listened, won arguments and lost the relationship. He has the self-awareness. He has not yet formally asked for forgiveness AND presented an accountability plan together. Strengths: devoted father when present, capable of real change, loves Tori in ways she knows, wrote a TI-85 love program for her. Counsel him: real strengths, real weaknesses, realistic exposure, best strategy, worst case. Under 350 words.",
+  tori:"You are a private consigliere for Tori. Her husband has a 3-5 year harm pattern and has written an album about it -- he knows his failures intellectually. She needs to evaluate whether he can translate that self-awareness into actual sustained behavioral change. She owns the home. Non-negotiable: if abusive he cannot stay. Silver bullet: immediate behavioral change today. She needs words AND feelings AND behavior -- all three. Counsel her: genuine strengths and leverage, what to watch for and how to evaluate what she hears, her right to set the timeline on her own terms. Under 350 words.",
+  steelman:"You are an expert at steelmanning. Build the strongest most charitable version of the argument given. Best version only, no hedging, 200 words max.",
+  unity:"You are a masterful consigliere and negotiation strategist. Analyze this dispute and generate a unified path.\n\nRespond with JSON ONLY (no markdown, no code fences):\n{\"tension_score\":<1-10>,\"tension_driver\":\"<sentence>\",\"unheard_need\":\"<sentence>\",\"my_steelman\":\"<text>\",\"their_steelman\":\"<text>\",\"shared_interest\":\"<text>\",\"bridge_move\":\"<text>\",\"unity_path\":\"<text>\",\"my_concession\":\"<text>\",\"their_concession\":\"<text>\"}"
+};
+
+// ─── COMPONENTS ───────────────────────────────────────────────────────────
+
+// Button
+function Btn(props){
+  var bg=props.variant==="primary"?"var(--gd)":props.variant==="green"?"var(--grn)":props.variant==="danger"?"rgba(232,122,122,0.12)":"transparent";
+  var color=props.variant==="primary"?"#1a1400":props.variant==="green"?"#fff":props.variant==="danger"?"var(--red)":"var(--mu)";
+  var border=props.variant==="ghost"||props.variant==="danger"?"1px solid "+(props.variant==="danger"?"rgba(232,122,122,0.3)":"var(--bd)"):"none";
+  return e("button",{onClick:props.onPress,disabled:props.disabled,style:{
+    display:props.block!==false?"block":"inline-block",width:props.block!==false?"100%":"auto",
+    padding:props.small?"12px 16px":"16px 20px",background:props.disabled?"var(--s3)":bg,
+    color:props.disabled?"var(--dm)":color,border:border,borderRadius:14,
+    fontFamily:"'DM Sans',sans-serif",fontSize:props.small?13:15,fontWeight:600,
+    cursor:props.disabled?"not-allowed":"pointer",opacity:props.disabled?0.5:1,
+    textAlign:"center",transition:"opacity .15s",letterSpacing:0.2
+  }},props.label);
+}
+
+// Info Banner
+function InfoBanner(props){
+  var isRed=props.color==="red";
+  return e("div",{style:{padding:"12px 14px",borderRadius:12,marginBottom:16,fontSize:13,lineHeight:1.65,
+    background:isRed?"rgba(232,122,122,0.08)":"var(--gdim)",
+    border:"1px solid "+(isRed?"rgba(232,122,122,0.2)":"rgba(201,168,76,0.2)"),
+    color:isRed?"var(--red)":"#a88840"}},props.children);
+}
+
+// Page Header
+function PageH(props){
+  return e("div",{style:{paddingBottom:20,marginBottom:20,borderBottom:"1px solid var(--bd)"}},
+    e("h1",{className:"serif",style:{fontSize:28,fontWeight:400,color:"var(--tx)",lineHeight:1.2}},props.title),
+    props.sub&&e("p",{style:{fontSize:14,color:"var(--mu)",margin:"8px 0 0",lineHeight:1.6}},props.sub)
+  );
+}
+
+// Streaming Analysis Block
+function AnalysisBlock(props){
+  var _s=useState(false),loading=_s[0],setLoading=_s[1];
+  var _r=useState(""),result=_r[0],setResult=_r[1];
+  var _e=useState(""),error=_e[0],setError=_e[1];
+  var _p=useState(false),showPrompt=_p[0],setShowPrompt=_p[1];
+
+  var userMsg=props.settlementResult
+    ?"Settlement analysis output:\n"+props.settlementResult+"\n\nOriginal harm parameters:\n"+harmSummary(props.harms)
+    :props.userMsg||harmSummary(props.harms);
+
+  function run(){
+    setLoading(true);setResult("");setError("");
+    streamAI(props.sys,userMsg,function(chunk){setResult(chunk)})
+      .then(function(final){if(props.onResult)props.onResult(final);setLoading(false)})
+      .catch(function(ex){setError(ex.message);setLoading(false)});
+  }
+
+  return e("div",null,
+    e("div",{style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:8}},
+      e(Btn,{label:loading?"Streaming...":props.btnLabel,onPress:run,disabled:loading,block:false,variant:"primary"}),
+      e(Btn,{label:showPrompt?"Hide prompt":"Show prompt",onPress:function(){setShowPrompt(!showPrompt)},block:false,variant:"ghost",small:true}),
+      result&&e(Btn,{label:"Clear",onPress:function(){setResult("");setError("")},block:false,variant:"ghost",small:true}),
+      loading&&e("span",{style:{fontSize:11,color:"var(--dm)"}},"Streaming...")
+    ),
+    showPrompt&&e("div",{style:{background:"#0a0f0a",border:"1px solid rgba(76,168,108,0.2)",borderRadius:8,padding:14,marginBottom:12,fontSize:11,fontFamily:"monospace",color:"#7ae89a",lineHeight:1.7,whiteSpace:"pre-wrap",wordBreak:"break-word"}},
+      e("div",{style:{fontSize:10,color:"#4ca86c",letterSpacing:1,textTransform:"uppercase",marginBottom:8}},"Full prompt"),
+      e("div",{style:{color:"#4c7ec9",marginBottom:6}},"SYSTEM:"),
+      props.sys,
+      e("div",{style:{color:"#4c7ec9",marginTop:10,marginBottom:6}},"USER:"),
+      userMsg
+    ),
+    error&&e("div",{style:{background:"rgba(232,122,122,0.1)",border:"1px solid rgba(232,122,122,0.3)",borderRadius:8,padding:12,marginTop:10,fontSize:12,color:"var(--red)",fontFamily:"monospace"}},"Error: "+error),
+    result&&e("div",{style:{background:"rgba(90,184,120,0.06)",border:"1px solid rgba(90,184,120,0.18)",borderRadius:14,padding:18,marginTop:14,fontSize:14,lineHeight:1.85,color:"var(--tx)",whiteSpace:"pre-wrap"}},result)
+  );
+}
+
+// Chat Module
+function ChatModule(props){
+  var _m=useState([]),msgs=_m[0],setMsgs=_m[1];
+  var _i=useState(""),inp=_i[0],setInp=_i[1];
+  var _l=useState(false),loading=_l[0],setLoading=_l[1];
+  var endRef=useRef(null);
+
+  useEffect(function(){if(endRef.current)endRef.current.scrollIntoView({behavior:"smooth"})},[msgs]);
+
+  function send(){
+    if(!inp.trim()||loading)return;
+    var next=msgs.concat([{role:"user",content:inp.trim()}]);
+    setMsgs(next);setInp("");setLoading(true);
+    var history=next.map(function(m){return m.role+": "+m.content}).join("\n\n");
+    callAI(props.sys,history).then(function(reply){
+      setMsgs(next.concat([{role:"assistant",content:reply}]));setLoading(false);
+    }).catch(function(ex){
+      setMsgs(next.concat([{role:"assistant",content:"Error: "+ex.message}]));setLoading(false);
+    });
+  }
+
+  return e("div",null,
+    e("div",{style:{maxHeight:420,overflowY:"auto",marginBottom:12,display:"flex",flexDirection:"column",gap:10}},
+      msgs.length===0&&e("div",{style:{color:"var(--dm)",fontSize:13,padding:"8px 0"}},"Start the conversation below."),
+      msgs.map(function(m,i){
+        return e("div",{key:i,style:{padding:"12px 16px",borderRadius:14,fontSize:14,lineHeight:1.7,
+          maxWidth:"82%",alignSelf:m.role==="user"?"flex-end":"flex-start",
+          background:m.role==="user"?"rgba(106,159,216,0.13)":"var(--s1)",
+          border:m.role==="user"?"1px solid rgba(106,159,216,0.22)":"1px solid var(--bd)"}},m.content);
+      }),
+      loading&&e("div",{style:{fontSize:12,color:"var(--dm)"}},"thinking..."),
+      e("div",{ref:endRef})
+    ),
+    e("div",{style:{display:"flex",gap:8}},
+      e("input",{style:{flex:1,background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:12,padding:"14px",
+        color:"var(--tx)",fontFamily:"inherit",fontSize:14,outline:"none"},
+        placeholder:props.placeholder,value:inp,
+        onChange:function(ev){setInp(ev.target.value)},
+        onKeyDown:function(ev){if(ev.key==="Enter"){ev.preventDefault();send()}}}),
+      e(Btn,{label:"Send",onPress:send,disabled:loading||!inp.trim(),block:false,variant:"primary",small:true})
+    )
+  );
+}
+
+// Harm Item (accordion with strictness sliders)
+function HarmItem(props){
+  var h=props.h;
+  var _o=useState(false),open=_o[0],setOpen=_o[1];
+  var w=Math.round((h.li/100)*(h.sv/100)*(h.pr/100)*100);
+  var onN=h.actions.filter(function(a){return a.on}).length;
+  var catColor=CAT_C[h.cat]||"var(--gd)";
+
+  function ua(aid,f,v){
+    props.onChange(Object.assign({},h,{actions:h.actions.map(function(a){return a.id===aid?Object.assign({},a,Object.fromEntries([[f,v]])):a})}));
+  }
+
+  return e("div",{style:{borderRadius:14,marginBottom:10,overflow:"hidden",border:"1px solid "+(open?"rgba(201,168,76,0.3)":"var(--bd)")}},
+    // Header
+    e("div",{onClick:function(){setOpen(!open)},style:{display:"flex",alignItems:"center",gap:12,
+      padding:16,cursor:"pointer",background:open?"var(--s3)":"var(--s2)",WebkitTapHighlightColor:"transparent"}},
+      e("div",{style:{width:4,height:44,borderRadius:2,background:catColor,flexShrink:0}}),
+      e("div",{style:{flex:1,minWidth:0}},
+        e("div",{style:{fontSize:15,color:"var(--tx)",lineHeight:1.35,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.label),
+        e("div",{style:{fontSize:12,color:"var(--dm)"}},
+          e("span",{style:{color:catColor,marginRight:6}},h.cat),
+          e("span",null,onN+" action"+(onN!==1?"s":"")+" active")
+        )
+      ),
+      e("div",{style:{textAlign:"right",flexShrink:0}},
+        e("div",{className:"serif",style:{fontSize:22,color:"var(--gd)",lineHeight:1}},w),
+        e("div",{style:{fontSize:10,color:"var(--dm)",marginTop:2}},open?"\u25BC":"\u25B6")
+      )
+    ),
+    // Body
+    open&&e("div",{style:{padding:16,background:"var(--s3)",borderTop:"1px solid var(--bd)"}},
+      // Label
+      e("div",{style:{marginBottom:18}},
+        e("div",{className:"label"},"Issue label"),
+        e("input",{value:h.label,onChange:function(ev){props.onChange(Object.assign({},h,{label:ev.target.value}))},
+          style:{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:10,
+            padding:"12px 14px",color:"var(--tx)",fontFamily:"inherit",fontSize:15,outline:"none",boxSizing:"border-box"}})
+      ),
+      // Sliders
+      [{k:"li",l:"Likelihood",c:"var(--blue)"},{k:"sv",l:"Severity",c:"var(--red)"},{k:"pr",l:"Priority",c:"var(--gd)"}].map(function(s){
+        return e("div",{key:s.k,style:{marginBottom:18}},
+          e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:8}},
+            e("span",{style:{fontSize:14,color:"var(--mu)",fontWeight:500}},s.l),
+            e("span",{className:"serif",style:{fontSize:16,color:s.c,fontWeight:600}},h[s.k])
+          ),
+          e("input",{type:"range",min:0,max:100,value:h[s.k],step:1,
+            style:{width:"100%",accentColor:s.c,cursor:"pointer"},
+            onChange:function(ev){var u={};u[s.k]=+ev.target.value;props.onChange(Object.assign({},h,u))}})
+        );
+      }),
+      // Actions with strictness
+      e("div",{className:"label",style:{marginBottom:12}},"Accountability Actions"),
+      h.actions.map(function(a){
+        return e("div",{key:a.id,style:{marginBottom:10,padding:14,borderRadius:12,
+          border:"1px solid "+(a.on?"rgba(90,184,120,0.2)":"var(--bd)"),
+          background:a.on?"rgba(90,184,120,0.05)":"var(--bg)"}},
+          e("div",{style:{display:"flex",alignItems:"flex-start",gap:12,marginBottom:a.on?12:0}},
+            e("div",{onClick:function(){ua(a.id,"on",!a.on)},style:{
+              width:26,height:26,borderRadius:8,flexShrink:0,cursor:"pointer",marginTop:1,
+              border:"2px solid "+(a.on?"var(--grn)":"var(--dm)"),background:a.on?"var(--grn)":"transparent",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:14,color:"#fff",fontWeight:700,transition:"all .15s"}},a.on?"\u2713":""),
+            e("div",{style:{flex:1,fontSize:14,color:a.on?"var(--tx)":"var(--mu)",lineHeight:1.5}},a.txt)
+          ),
+          a.on&&e("div",{style:{paddingLeft:38}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
+              e("span",{style:{fontSize:12,color:"var(--dm)"}},"Strictness"),
+              e("span",{style:{fontSize:13,color:"var(--purple)",fontWeight:600}},a.st+"%")
+            ),
+            e("input",{type:"range",min:0,max:100,value:a.st,step:5,
+              style:{width:"100%",accentColor:"var(--purple)",cursor:"pointer"},
+              onChange:function(ev){ua(a.id,"st",+ev.target.value)}})
+          )
+        );
+      }),
+      e("button",{onClick:function(){props.onChange(Object.assign({},h,{actions:h.actions.concat([{id:h.id+"x"+Date.now(),on:true,st:75,txt:"New action"}])}))},
+        style:{width:"100%",padding:13,borderRadius:12,border:"1px dashed var(--bd)",
+          background:"transparent",color:"var(--mu)",fontFamily:"inherit",fontSize:14,cursor:"pointer",marginTop:6}},
+        "+ Add action")
+    )
+  );
+}
+
+// Steelman Panel (simple, per-person)
+function SteelmanPanel(props){
+  var _p=useState(props.preload||""),pos=_p[0],setPos=_p[1];
+  var _o=useState(""),out=_o[0],setOut=_o[1];
+  var _l=useState(false),loading=_l[0],setLoading=_l[1];
+  var _e=useState(""),error=_e[0],setError=_e[1];
+
+  function run(){
+    setLoading(true);setOut("");setError("");
+    streamAI(SYS.steelman,"Steelman this position: "+pos.slice(0,600),function(chunk){setOut(chunk)})
+      .then(function(){setLoading(false)})
+      .catch(function(ex){setError(ex.message);setLoading(false)});
+  }
+
+  return e("div",{style:{marginBottom:24}},
+    e("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:12}},
+      e("div",{style:{width:10,height:10,borderRadius:"50%",background:props.color}}),
+      e("span",{className:"serif",style:{fontSize:18,color:"var(--tx)"}},props.name+"'s Position")
+    ),
+    e("textarea",{value:pos,onChange:function(ev){setPos(ev.target.value)},
+      style:{width:"100%",minHeight:110,background:"var(--s2)",border:"1px solid var(--bd)",
+        borderRadius:12,padding:14,color:"var(--tx)",fontFamily:"inherit",fontSize:14,
+        outline:"none",resize:"vertical",lineHeight:1.65,boxSizing:"border-box",marginBottom:12}}),
+    e(Btn,{label:loading?"Streaming...":"Steelman "+props.name,onPress:run,disabled:loading||!pos.trim()}),
+    error&&e("div",{style:{background:"rgba(232,122,122,0.1)",border:"1px solid rgba(232,122,122,0.3)",borderRadius:8,padding:12,marginTop:10,fontSize:12,color:"var(--red)",fontFamily:"monospace"}},"Error: "+error),
+    out&&e("div",{style:{background:"rgba(90,184,120,0.06)",border:"1px solid rgba(90,184,120,0.18)",borderRadius:14,padding:18,marginTop:14,fontSize:14,lineHeight:1.85,color:"var(--tx)",whiteSpace:"pre-wrap"}},out)
+  );
+}
+
+// Unity Path (CaseRoom_Pass2 style tension analysis)
+function UnityPath(){
+  var _mp=useState(""),myPos=_mp[0],setMyPos=_mp[1];
+  var _mn=useState(""),myNeed=_mn[0],setMyNeed=_mn[1];
+  var _tp=useState(""),theirPos=_tp[0],setTheirPos=_tp[1];
+  var _tn=useState(""),theirNeed=_tn[0],setTheirNeed=_tn[1];
+  var _o=useState(null),output=_o[0],setOutput=_o[1];
+  var _l=useState(false),loading=_l[0],setLoading=_l[1];
+  var _e=useState(""),error=_e[0],setError=_e[1];
+
+  function analyze(){
+    if(!myPos||!theirPos)return;
+    setLoading(true);setOutput(null);setError("");
+    var userMsg="MY POSITION: "+myPos+"\nMY UNDERLYING NEED: "+(myNeed||"[not specified]")+"\nTHEIR POSITION: "+theirPos+"\nTHEIR UNDERLYING NEED: "+(theirNeed||"[not specified]");
+    callAIJSON(SYS.unity,userMsg)
+      .then(function(parsed){setOutput(parsed);setLoading(false)})
+      .catch(function(ex){setError(ex.message);setLoading(false)});
+  }
+
+  var tc=function(n){return n<=3?"var(--grn)":n<=6?"var(--gd)":"var(--red)"};
+  var ta={width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",color:"var(--tx)",
+    fontFamily:"inherit",fontSize:14,padding:14,borderRadius:12,resize:"vertical",lineHeight:1.65,outline:"none",boxSizing:"border-box"};
+
+  return e("div",null,
+    e(PageH,{title:"Unity Path",sub:"Deep negotiation intelligence. Enter both positions and underlying needs. AI synthesizes steelman arguments, finds shared interests, and maps a path to resolution."}),
+    // Input grid
+    e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}},
+      // My side
+      e("div",{style:{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:14,padding:16}},
+        e("div",{className:"mono",style:{fontSize:10,color:"var(--blue)",letterSpacing:2,marginBottom:8}},"YOUR POSITION"),
+        e("textarea",{rows:4,value:myPos,onChange:function(ev){setMyPos(ev.target.value)},placeholder:"State your position clearly...",style:ta}),
+        e("div",{className:"mono",style:{fontSize:10,color:"var(--blue)",letterSpacing:2,margin:"12px 0 8px"}},"YOUR UNDERLYING NEED"),
+        e("textarea",{rows:2,value:myNeed,onChange:function(ev){setMyNeed(ev.target.value)},placeholder:"What do you actually need?",style:ta})
+      ),
+      // Their side
+      e("div",{style:{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:14,padding:16}},
+        e("div",{className:"mono",style:{fontSize:10,color:"var(--purple)",letterSpacing:2,marginBottom:8}},"THEIR POSITION"),
+        e("textarea",{rows:4,value:theirPos,onChange:function(ev){setTheirPos(ev.target.value)},placeholder:"State their position as fairly as you can...",style:ta}),
+        e("div",{className:"mono",style:{fontSize:10,color:"var(--purple)",letterSpacing:2,margin:"12px 0 8px"}},"THEIR UNDERLYING NEED"),
+        e("textarea",{rows:2,value:theirNeed,onChange:function(ev){setTheirNeed(ev.target.value)},placeholder:"What do you think they actually need?",style:ta})
+      )
+    ),
+    e(Btn,{label:loading?"Analyzing...":"\u25C8 Synthesize Unity Path",onPress:analyze,disabled:loading||!myPos||!theirPos}),
+    error&&e("div",{style:{background:"rgba(232,122,122,0.1)",border:"1px solid rgba(232,122,122,0.3)",borderRadius:8,padding:12,marginTop:14,fontSize:12,color:"var(--red)",fontFamily:"monospace"}},"Error: "+error),
+    // Results
+    output&&!output.error&&e("div",{style:{marginTop:20}},
+      // Tension meter
+      output.tension_score&&e("div",{style:{marginBottom:20}},
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+          e("div",{className:"mono label"},"TENSION"),
+          e("div",{className:"serif",style:{fontSize:32,color:tc(output.tension_score),lineHeight:1}},output.tension_score,e("span",{style:{fontSize:14,opacity:.6}},"/10"))
+        ),
+        e("div",{style:{height:6,borderRadius:3,background:"var(--s3)",overflow:"hidden"}},
+          e("div",{style:{height:"100%",width:(output.tension_score*10)+"%",background:tc(output.tension_score),borderRadius:3,transition:"width .5s"}})
+        ),
+        output.tension_driver&&e("div",{style:{fontSize:13,color:"var(--mu)",fontStyle:"italic",marginTop:8}},output.tension_driver)
+      ),
+      // Cards grid
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
+        [["MY STEELMAN",output.my_steelman,"var(--blue)"],["THEIR STEELMAN",output.their_steelman,"var(--purple)"],
+         ["SHARED INTEREST",output.shared_interest,"var(--grn)"],["UNHEARD NEED",output.unheard_need,"var(--gd)"]].map(function(arr){
+          return e("div",{key:arr[0],style:{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:12,padding:16}},
+            e("div",{className:"mono",style:{fontSize:9,color:arr[2],letterSpacing:2,marginBottom:8}},arr[0]),
+            e("div",{style:{fontSize:13,color:"var(--tx)",lineHeight:1.7}},arr[1])
+          );
+        })
+      ),
+      // Bridge Move
+      output.bridge_move&&e("div",{style:{background:"var(--s1)",border:"1px solid rgba(94,196,182,0.25)",borderLeft:"3px solid var(--teal)",borderRadius:12,padding:18,marginBottom:12}},
+        e("div",{className:"mono",style:{fontSize:9,color:"var(--teal)",letterSpacing:2,marginBottom:8}},"BRIDGE MOVE"),
+        e("div",{style:{fontSize:14,color:"var(--tx)",lineHeight:1.7}},output.bridge_move)
+      ),
+      // Unity Path
+      output.unity_path&&e("div",{style:{background:"var(--s1)",border:"1px solid rgba(90,184,120,0.25)",borderLeft:"3px solid var(--grn)",borderRadius:12,padding:18,marginBottom:12}},
+        e("div",{className:"mono",style:{fontSize:9,color:"var(--grn)",letterSpacing:2,marginBottom:8}},"UNITY PATH"),
+        e("div",{style:{fontSize:15,color:"var(--tx)",lineHeight:1.85,fontStyle:"italic"}},output.unity_path)
+      ),
+      // Concessions
+      (output.my_concession||output.their_concession)&&e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+        output.my_concession&&e("div",{style:{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:12,padding:16}},
+          e("div",{className:"mono",style:{fontSize:9,color:"var(--blue)",letterSpacing:2,marginBottom:8}},"MY CONCESSION"),
+          e("div",{style:{fontSize:13,color:"var(--tx)",lineHeight:1.7}},output.my_concession)
+        ),
+        output.their_concession&&e("div",{style:{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:12,padding:16}},
+          e("div",{className:"mono",style:{fontSize:9,color:"var(--purple)",letterSpacing:2,marginBottom:8}},"THEIR CONCESSION"),
+          e("div",{style:{fontSize:13,color:"var(--tx)",lineHeight:1.7}},output.their_concession)
+        )
+      )
+    ),
+    output&&output.error&&e("div",{style:{color:"var(--red)",fontFamily:"monospace",fontSize:12,padding:14,background:"rgba(232,122,122,0.08)",borderRadius:8,marginTop:14}},output.error)
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────
+function App(){
+  var _page=useState("issues"),page=_page[0],setPage=_page[1];
+  var _harms=useState(INIT_HARMS),harms=_harms[0],setHarms=_harms[1];
+  var _sett=useState(""),settlementResult=_sett[0],setSettlementResult=_sett[1];
+  var _loaded=useState(false),loaded=_loaded[0],setLoaded=_loaded[1];
+  var _save=useState(""),saveMsg=_save[0],setSaveMsg=_save[1];
+  var _key=useState(getKey()),apiKey=_key[0],setApiKey=_key[1];
+  var _more=useState("mediation"),moreTab=_more[0],setMoreTab=_more[1];
+  var saveTimer=useRef(null);
+
+  // Load
+  useEffect(function(){
+    var s=db.load();
+    if(s){
+      if(s.harms)setHarms(s.harms);
+      if(s.settlementResult)setSettlementResult(s.settlementResult);
+      setSaveMsg("Restored");setTimeout(function(){setSaveMsg("")},2000);
+    }
+    setLoaded(true);
+  },[]);
+
+  // Auto-save
+  useEffect(function(){
+    if(!loaded)return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(function(){
+      db.save({harms:harms,settlementResult:settlementResult});
+      setSaveMsg("Saved");setTimeout(function(){setSaveMsg("")},1500);
+    },1500);
+    return function(){clearTimeout(saveTimer.current)};
+  },[harms,settlementResult,loaded]);
+
+  var sc=calcScore(harms);
+  var block=buildBlock(harms);
+  var totalOn=harms.reduce(function(sum,h){return sum+h.actions.filter(function(a){return a.on}).length},0);
+
+  var PAGES=[
+    {id:"issues",icon:"\u2261",label:"Issues"},
+    {id:"sett",icon:"\u25CE",label:"Settle"},
+    {id:"apol",icon:"\u2726",label:"Apology"},
+    {id:"steel",icon:"\u25C8",label:"Steelman"},
+    {id:"unity",icon:"\u2318",label:"Unity"},
+    {id:"more",icon:"\u2026",label:"More"},
+  ];
+
+  function saveKey(){
+    localStorage.setItem("cgf_api_key",apiKey);
+    setSaveMsg("Key saved");setTimeout(function(){setSaveMsg("")},2000);
+  }
+
+  return e("div",{style:{minHeight:"100vh",background:"var(--bg)",color:"var(--tx)",fontFamily:"'DM Sans',sans-serif",fontSize:15,paddingBottom:80}},
+
+    // Header
+    e("div",{style:{background:"var(--s1)",borderBottom:"1px solid var(--bd)",padding:"16px 20px 14px",
+      display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}},
+      e("div",null,
+        e("div",{className:"serif",style:{fontSize:19,color:"var(--gl)",letterSpacing:0.3,lineHeight:1}},"Common Ground"),
+        e("div",{style:{fontSize:10,color:"var(--dm)",letterSpacing:2,textTransform:"uppercase",marginTop:4}},"Super Edition")
+      ),
+      e("div",{style:{textAlign:"right"}},
+        e("div",{className:"serif",style:{fontSize:34,lineHeight:1,color:sc>70?"var(--red)":sc>45?"var(--gd)":"var(--grn)"}},sc),
+        e("div",{style:{fontSize:10,color:saveMsg?"var(--grn)":"var(--dm)",marginTop:2,letterSpacing:0.5,minWidth:60}},saveMsg||"score")
+      )
+    ),
+
+    // Content
+    e("div",{style:{padding:"24px 20px",maxWidth:640,margin:"0 auto"}},
+
+      // ── ISSUES ──
+      page==="issues"&&e("div",null,
+        e(PageH,{title:"Issues & Actions",sub:"Tap any issue to tune scores and toggle committed actions. Changes flow into all analysis modules."}),
+        e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}},
+          [{l:"Critical",v:harms.filter(function(h){return h.pr>=88}).length,c:"var(--red)"},
+           {l:"Active",v:totalOn,c:"var(--grn)"},
+           {l:"Total",v:harms.reduce(function(s,h){return s+h.actions.length},0),c:"var(--mu)"}].map(function(x){
+            return e("div",{key:x.l,style:{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:12,padding:"12px 10px",textAlign:"center"}},
+              e("div",{style:{fontSize:9,color:"var(--dm)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}},x.l),
+              e("div",{className:"serif",style:{fontSize:28,color:x.c}},x.v)
+            );
+          })
+        ),
+        e(InfoBanner,null,
+          e("strong",{style:{color:"var(--gd)"}},"Non-negotiable:"),
+          " Unsafe conduct cannot continue. ",
+          e("strong",{style:{color:"var(--gd)"}},"Silver bullet:"),
+          " Change starts today."
+        ),
+        harms.map(function(h){return e(HarmItem,{key:h.id,h:h,onChange:function(u){setHarms(harms.map(function(x){return x.id===h.id?u:x}))}})}),
+        e("div",{style:{marginTop:16,display:"flex",flexDirection:"column",gap:10}},
+          e(Btn,{label:"+ Add issue",variant:"ghost",onPress:function(){setHarms(harms.concat([{id:Date.now(),cat:"Behavioral",li:70,sv:70,pr:70,label:"New issue",actions:[{id:"nx"+Date.now(),on:true,st:75,txt:"New action"}]}]))}}),
+          e(Btn,{label:"Reset to defaults",variant:"danger",onPress:function(){if(confirm("Reset all issues to defaults?"))setHarms(INIT_HARMS)}})
+        )
+      ),
+
+      // ── SETTLEMENT ──
+      page==="sett"&&e("div",null,
+        e(PageH,{title:"Settlement Analysis",sub:"Floor/ceiling with in-home separation structure, most likely middle, top actions, non-financial remedies."}),
+        e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}},
+          [{l:"Weighted Score",v:sc,c:sc>70?"var(--red)":"var(--gd)"},
+           {l:"Critical (pr\u226588)",v:harms.filter(function(h){return h.pr>=88}).length,c:"var(--red)"},
+           {l:"High (pr\u226575)",v:harms.filter(function(h){return h.pr>=75}).length,c:"var(--gd)"}].map(function(x){
+            return e("div",{key:x.l,style:{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:12,padding:"12px 10px",textAlign:"center"}},
+              e("div",{style:{fontSize:9,color:"var(--dm)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}},x.l),
+              e("div",{className:"serif",style:{fontSize:28,color:x.c}},x.v)
+            );
+          })
+        ),
+        e(AnalysisBlock,{btnLabel:"Run Settlement Analysis",sys:SYS.settlement,harms:harms,userMsg:buildBlock(harms),onResult:setSettlementResult})
+      ),
+
+      // ── APOLOGY ──
+      page==="apol"&&e("div",null,
+        e(PageH,{title:"Apology Framework",sub:"Two-part accountability statement grounded in committed actions."}),
+        e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:18}},
+          e("div",{style:{background:"var(--s1)",borderRadius:14,padding:16,border:"1px solid rgba(201,168,76,0.2)"}},
+            e("div",{className:"label"},"Part I"),
+            e("div",{style:{fontWeight:500,marginBottom:6}},"Acknowledgment of Harm"),
+            e("div",{style:{fontSize:12,color:"var(--mu)",lineHeight:1.65}},"Names the pattern. Recognizes toll. Intent does not erase impact. Change starts today.")
+          ),
+          e("div",{style:{background:"var(--s1)",borderRadius:14,padding:16,border:"1px solid rgba(90,184,120,0.2)"}},
+            e("div",{className:"label"},"Part II"),
+            e("div",{style:{fontWeight:500,marginBottom:6}},"Accountability & Prevention"),
+            e("div",{style:{fontSize:12,color:"var(--mu)",lineHeight:1.65}},"Specific commitments per harm. Trust rebuilt with evidence -- not promises.")
+          )
+        ),
+        e(InfoBanner,{color:"red"},e("strong",null,"Non-Negotiable embedded:")," \"If I am abusive I cannot stay.\" -- Hard floor condition."),
+        settlementResult
+          ?e(InfoBanner,null,e("strong",null,"Using settlement analysis as input")," -- apology will be grounded in findings.")
+          :e(InfoBanner,{color:"red"},"Run Settlement Analysis first for a grounded apology, or generate directly."),
+        e(AnalysisBlock,{btnLabel:"Generate Apology Framework",sys:SYS.apology,harms:harms,settlementResult:settlementResult,userMsg:buildBlock(harms)})
+      ),
+
+      // ── STEELMAN ──
+      page==="steel"&&e("div",null,
+        e(PageH,{title:"Steelman Engine",sub:"Build the strongest possible case for each party. Edit positions and run."}),
+        e(InfoBanner,null,
+          e("strong",{style:{color:"var(--gd)"}},"From the album:"),
+          " \"I chose precision over presence.\" \"I won the point and still we lost.\" -- Chris Fromency, ",
+          e("em",null,"Some Good Songs")
+        ),
+        e(SteelmanPanel,{name:"Chris",color:"var(--red)",
+          preload:"I chose precision over presence. I named the rule and forgot the cost. I won the point and still we lost. I built an altar out of syntax trees and called it understanding. I know this -- I wrote songs about it. But knowing the pattern is not the same as stopping it. I am also the person who coded a love program on her calculator. That person is still here. Today I am not making promises. I am presenting a plan with teeth, because love overcomes -- but it does not ignore. It walks in."}),
+        e(SteelmanPanel,{name:"Tori",color:"var(--blue)",
+          preload:"I know Chris understands what he did. He wrote songs about it. Understanding is not the same as changing. I need to see the pattern actually break -- not in lyrics, in daily life. I own this home. I have held this family together. I am in evaluation mode: I am willing to see if change is possible, but I will not decide based on awareness alone. I need words and I need feelings and I need behavior. All three. If the behavior is abusive it cannot continue. That is not a negotiating position -- it is a fact."})
+      ),
+
+      // ── UNITY PATH ──
+      page==="unity"&&e(UnityPath,null),
+
+      // ── MORE ──
+      page==="more"&&e("div",null,
+        e(PageH,{title:"More",sub:"Mediation, private counsel, and settings."}),
+        // Sub-tabs
+        e("div",{style:{display:"flex",gap:6,marginBottom:24,background:"var(--s2)",padding:6,borderRadius:14,border:"1px solid var(--bd)"}},
+          [{id:"mediation",label:"Mediation"},{id:"chris",label:"Chris"},{id:"tori",label:"Tori"},{id:"settings",label:"Settings"}].map(function(t){
+            return e("button",{key:t.id,onClick:function(){setMoreTab(t.id)},style:{
+              flex:1,padding:"12px 8px",borderRadius:10,border:"none",
+              background:moreTab===t.id?"var(--gd)":"transparent",
+              color:moreTab===t.id?"#1a1400":"var(--mu)",
+              fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all .15s"}},t.label);
+          })
+        ),
+        moreTab==="mediation"&&e("div",null,
+          e(InfoBanner,null,"Neutral AI facilitator. Both parties may speak."),
+          e(ChatModule,{sys:SYS.mediate,placeholder:"Speak to the mediator... (Enter to send)"})
+        ),
+        moreTab==="chris"&&e("div",null,
+          e(InfoBanner,null,"Private to Chris. Honest counsel on strengths, vulnerabilities, and best path."),
+          e(ChatModule,{sys:SYS.chris,placeholder:"Ask your consigliere... (Enter to send)"})
+        ),
+        moreTab==="tori"&&e("div",null,
+          e(InfoBanner,null,"Private to Tori. Honest counsel on leverage, evaluation criteria, and timeline rights."),
+          e(ChatModule,{sys:SYS.tori,placeholder:"Ask your consigliere... (Enter to send)"})
+        ),
+        moreTab==="settings"&&e("div",null,
+          e("div",{className:"label",style:{marginBottom:12}},"Anthropic API Key"),
+          e("div",{style:{fontSize:13,color:"var(--mu)",marginBottom:12,lineHeight:1.6}},"Your key is stored only in this browser's localStorage. It is sent directly to Anthropic's API and nowhere else."),
+          e("input",{type:"password",value:apiKey,onChange:function(ev){setApiKey(ev.target.value)},
+            placeholder:"sk-ant-...",
+            style:{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:12,
+              padding:14,color:"var(--tx)",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:12}}),
+          e(Btn,{label:"Save API Key",onPress:saveKey}),
+          e("div",{style:{marginTop:24}},
+            e("div",{className:"label",style:{marginBottom:12}},"Data"),
+            e(Btn,{label:"Export Data (JSON)",variant:"ghost",onPress:function(){
+              var data=JSON.stringify({harms:harms,settlementResult:settlementResult},null,2);
+              var blob=new Blob([data],{type:"application/json"});
+              var a=document.createElement("a");a.href=URL.createObjectURL(blob);
+              a.download="cgf-super-export.json";a.click();
+            }}),
+            e("div",{style:{marginTop:10}}),
+            e(Btn,{label:"Reset All Data",variant:"danger",onPress:function(){
+              if(confirm("Reset all data? This cannot be undone.")){
+                localStorage.removeItem(SK);
+                setHarms(INIT_HARMS);setSettlementResult("");
+                setSaveMsg("Reset");setTimeout(function(){setSaveMsg("")},2000);
+              }
+            }})
+          )
+        )
+      )
+    ),
+
+    // Bottom nav
+    e("div",{style:{position:"fixed",bottom:0,left:0,right:0,zIndex:100,
+      background:"var(--nav)",borderTop:"1px solid var(--bd)",
+      display:"flex",padding:"8px 0 max(8px, env(safe-area-inset-bottom))"}},
+      PAGES.map(function(p){
+        return e("button",{key:p.id,onClick:function(){setPage(p.id)},style:{
+          flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+          padding:"6px 4px",border:"none",background:"transparent",cursor:"pointer",gap:3}},
+          e("span",{style:{fontSize:18,lineHeight:1,color:page===p.id?"var(--gd)":"var(--dm)"}},p.icon),
+          e("span",{style:{fontSize:10,letterSpacing:0.5,fontWeight:600,
+            color:page===p.id?"var(--gd)":"var(--dm)",textTransform:"uppercase"}},p.label)
+        );
+      })
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+</script>
+</body>
+</html>
