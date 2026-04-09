@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>ANAGAGE · Cave Bootup</title>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- MediaPipe Pose -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace}
+
+/* ── CANVAS LAYER ── */
+#three-canvas{position:fixed;inset:0;z-index:1}
+
+/* ── EYE VIGNETTES ── */
+#eye-top,#eye-bot{
+  position:fixed;left:0;right:0;z-index:20;pointer-events:none;
+  transition:height .18s ease;
+}
+#eye-top{top:0;background:radial-gradient(ellipse 90% 100% at 50% 0%,#000 55%,transparent 100%)}
+#eye-bot{bottom:0;background:radial-gradient(ellipse 90% 100% at 50% 100%,#000 55%,transparent 100%)}
+#vignette{
+  position:fixed;inset:0;z-index:19;pointer-events:none;
+  background:radial-gradient(ellipse 72% 62% at 50% 50%,transparent 45%,rgba(0,0,0,.92) 100%)
+}
+
+/* ── PiP CAMERA PANEL ── */
+#cam-panel{
+  position:fixed;top:16px;right:16px;z-index:50;
+  width:120px;height:160px;border:1px solid rgba(255,200,0,.2);
+  background:#000;overflow:hidden;border-radius:4px;
+  display:none;
+}
+#cam-panel.visible{display:block}
+#userVideo{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.55}
+#poseCanvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* ── HUD TITLE ── */
+#title-bar{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);
+  text-align:center;z-index:30;pointer-events:none;
+}
+#title-main{color:#ffd700;font-size:14px;letter-spacing:.42em;font-weight:bold;text-shadow:0 0 22px #ffd70099}
+#title-sub{color:#442200;font-size:9px;letter-spacing:.22em;margin-top:3px}
+
+/* ── BOOT TEXT ── */
+#boot-text{
+  position:fixed;bottom:34%;left:50%;transform:translateX(-50%);
+  text-align:center;z-index:30;pointer-events:none;
+  max-width:300px;
+  color:#cc8833;font-size:15px;letter-spacing:.08em;line-height:1.7;font-style:italic;
+  text-shadow:0 0 14px #cc883344;
+  transition:opacity .5s;
+}
+
+/* ── ENERGY HUD ── */
+#energy-hud{
+  position:fixed;bottom:108px;left:50%;transform:translateX(-50%);
+  z-index:30;text-align:center;width:260px;display:none;
+}
+#energy-hud.visible{display:block}
+#energy-label{color:#ffd700;font-size:9px;letter-spacing:.2em;margin-bottom:4px}
+#energy-bar-track{width:100%;height:6px;background:#111;border:1px solid rgba(255,215,0,.15);border-radius:3px;overflow:hidden}
+#energy-bar-fill{height:100%;background:linear-gradient(90deg,#ff6600,#ffd700);box-shadow:0 0 8px #ffd70055;transition:width .2s;width:0}
+#combo-label{color:#ff8844;font-size:11px;margin-top:6px;letter-spacing:.15em;min-height:16px}
+#ascent-label{color:#88ccff;font-size:9px;letter-spacing:.2em;margin-top:10px;margin-bottom:4px}
+#ascent-bar-track{width:100%;height:8px;background:#050510;border:1px solid rgba(68,136,255,.2);border-radius:4px;overflow:hidden}
+#ascent-bar-fill{height:100%;background:linear-gradient(90deg,#224488,#88ccff);box-shadow:0 0 10px #88ccff44;transition:width .4s;width:0}
+
+/* ── PHASE DOTS ── */
+#phase-dots{
+  position:fixed;left:16px;top:50%;transform:translateY(-50%);
+  z-index:30;display:flex;flex-direction:column;gap:10px;pointer-events:none;
+}
+.dot-row{display:flex;align-items:center;gap:7px}
+.dot{width:8px;height:8px;border-radius:50%;background:#1a1a22;transition:all .5s}
+.dot.lit{background:#ffd700;box-shadow:0 0 9px #ffd700}
+.dot-label{color:#333;font-size:8px;letter-spacing:.12em;transition:color .5s}
+.dot.lit + .dot-label, .dot-row.lit .dot-label{color:#ffd700}
+
+/* ── BOUNCE BTN ── */
+#bounce-btn{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+  z-index:30;
+  background:rgba(255,100,0,.1);border:2px solid rgba(255,100,0,.3);
+  border-radius:60px;padding:16px 42px;
+  color:#ff8800;font-size:13px;letter-spacing:.2em;font-weight:bold;
+  cursor:pointer;text-shadow:0 0 10px #ff880066;
+  font-family:'Courier New',monospace;
+  touch-action:manipulation;display:none;
+  transition:background .1s,transform .08s;
+}
+#bounce-btn.visible{display:block}
+#bounce-btn:active{background:rgba(255,140,0,.25);transform:translateX(-50%) scale(.97)}
+
+/* ── CAMERA PERMISSION PROMPT ── */
+#cam-prompt{
+  position:fixed;inset:0;z-index:80;
+  background:rgba(0,0,0,.95);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+}
+#cam-prompt h2{color:#ffd700;font-size:16px;letter-spacing:.2em}
+#cam-prompt p{color:#554400;font-size:11px;letter-spacing:.1em;text-align:center;max-width:260px;line-height:1.8}
+.prompt-btn{
+  padding:12px 32px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35);
+  color:#ffd700;font-family:'Courier New',monospace;font-size:12px;letter-spacing:.18em;
+  cursor:pointer;border-radius:2px;transition:background .15s;
+}
+.prompt-btn:hover{background:rgba(255,215,0,.22)}
+.prompt-btn.skip{color:#333;border-color:#1a1a1a;background:none;font-size:10px}
+
+/* ── MOTION STATUS ── */
+#motion-status{
+  position:fixed;top:16px;left:16px;z-index:50;
+  font-size:8px;letter-spacing:.15em;color:#1a1a22;
+  display:flex;flex-direction:column;gap:4px;
+}
+#mp-status{transition:color .3s}
+#mp-status.active{color:#22aa44}
+#mp-status.error{color:#aa2222}
+
+/* ── COMPLETE OVERLAY ── */
+#complete-overlay{
+  position:fixed;inset:0;z-index:70;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at center,rgba(255,220,100,.10) 0%,transparent 70%);
+  pointer-events:none;
+}
+#complete-overlay.visible{display:flex}
+#complete-main{color:#ffd700;font-size:24px;letter-spacing:.32em;font-weight:bold;text-shadow:0 0 34px #ffd700;animation:pulse 2s ease-in-out infinite}
+#complete-sub{color:#886600;font-size:11px;margin-top:18px;letter-spacing:.22em;text-align:center}
+#complete-tag{color:#443300;font-size:9px;margin-top:10px;letter-spacing:.18em}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.72;transform:scale(1.05)}}
+
+/* ── ACCESS GATE ── */
+body.cv-locked > *:not(#cv-gate){display:none !important}
+#cv-gate{display:none;position:fixed;inset:0;background:#07090c;z-index:99999;flex-direction:column;align-items:center;justify-content:center;font-family:'IBM Plex Mono','Courier New',monospace;padding:32px;}
+body.cv-locked #cv-gate{display:flex}
+#cv-gate .cv-eyebrow{font-size:9px;color:#c8a96e;letter-spacing:5px;text-transform:uppercase;margin-bottom:12px}
+#cv-gate .cv-title{font-family:'Georgia',serif;font-size:clamp(36px,8vw,72px);font-weight:900;color:#f0ead8;line-height:.95;text-align:center;margin-bottom:8px}
+#cv-gate .cv-title em{color:#ffd700;font-style:italic}
+#cv-gate .cv-sub{font-size:9px;color:#3a4860;letter-spacing:3px;margin-bottom:36px;text-align:center}
+#cv-gate .cv-row{display:flex;gap:0;margin-bottom:12px;max-width:360px;width:100%}
+#cv-gate input{flex:1;background:#0d1018;border:1px solid #c8a96e;border-right:none;color:#f0ead8;font-family:inherit;font-size:13px;padding:12px 16px;outline:none;letter-spacing:3px}
+#cv-gate button{background:#c8a96e;color:#0d0c0a;border:none;font-family:inherit;font-size:11px;letter-spacing:3px;padding:12px 20px;cursor:pointer;font-weight:700;white-space:nowrap}
+#cv-gate .cv-err{display:none;font-size:9px;color:#cc3333;letter-spacing:2px;margin-bottom:16px}
+#cv-gate .cv-foot{font-size:9px;color:#2a3040;letter-spacing:2px;text-align:center;max-width:320px;line-height:1.9}
+#cv-gate .cv-foot a{color:#c8a96e;text-decoration:none}
+</style>
+</head>
+<body class="cv-locked">
+
+<!-- Access gate -->
+<div id="cv-gate">
+  <div class="cv-eyebrow">Marvin Creek</div>
+  <div class="cv-title">THE<br><em>CAVE</em></div>
+  <div class="cv-sub">PRE-PUBLIC ACCESS · ENTER ACCESS CODE</div>
+  <div class="cv-row">
+    <input id="cv-gate-inp" type="password" placeholder="Access code" autocomplete="off"/>
+    <button id="cv-gate-btn">ENTER →</button>
+  </div>
+  <div id="cv-gate-err" class="cv-err">ACCESS DENIED · CHECK YOUR CODE</div>
+  <div class="cv-foot">Access code provided on the Kickstarter campaign page.<br>
+    <a href="/">← Back to Kickstarter Campaign</a>
+  </div>
+</div>
+<script>
+(function(){
+  var token = "THERECORD2026";
+  var hash = window.location.hash || "";
+  var params = new URLSearchParams(hash.slice(1));
+  var stored = sessionStorage.getItem("cv_access");
+  if (params.get("access") === token || stored === token) {
+    sessionStorage.setItem("cv_access", token);
+    document.body.classList.remove("cv-locked");
+    if (params.get("access") === token) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+    return;
+  }
+  document.addEventListener("DOMContentLoaded", function(){
+    var btn = document.getElementById("cv-gate-btn");
+    var inp = document.getElementById("cv-gate-inp");
+    var err = document.getElementById("cv-gate-err");
+    function check(){
+      if (inp && inp.value.trim().toUpperCase() === token) {
+        sessionStorage.setItem("cv_access", token);
+        err.style.display = "none";
+        document.body.classList.remove("cv-locked");
+      } else {
+        if (err) err.style.display = "block";
+        if (inp) { inp.value = ""; inp.focus(); }
+      }
+    }
+    if (btn) btn.addEventListener("click", check);
+    if (inp) inp.addEventListener("keydown", function(e){ if(e.key==="Enter") check(); });
+    if (inp) inp.focus();
+  });
+})();
+</script>
+
+<!-- Camera permission prompt -->
+<div id="cam-prompt">
+  <h2>ANAGAGE CAVE BOOTUP</h2>
+  <p>This app uses your camera to track body movement in real time. Your bouncing controls your ascent through Plato's cave.</p>
+  <button class="prompt-btn" onclick="startWithCamera()">ENABLE CAMERA TRACKING</button>
+  <button class="prompt-btn skip" onclick="startWithoutCamera()">SKIP — USE KEYBOARD INSTEAD</button>
+</div>
+
+<!-- Eye vignettes -->
+<div id="eye-top" style="height:50%"></div>
+<div id="eye-bot" style="height:50%"></div>
+<div id="vignette"></div>
+
+<!-- Three.js cave -->
+<div id="three-canvas"></div>
+
+<!-- PiP camera view -->
+<div id="cam-panel">
+  <video id="userVideo" playsinline muted autoplay></video>
+  <canvas id="poseCanvas"></canvas>
+</div>
+
+<!-- HUD -->
+<div id="title-bar">
+  <div id="title-main">ANAGAGE</div>
+  <div id="title-sub" id="phase-sub">INITIALIZING</div>
+</div>
+<div id="boot-text"></div>
+
+<div id="energy-hud">
+  <div id="energy-label">ENERGY 0%</div>
+  <div id="energy-bar-track"><div id="energy-bar-fill"></div></div>
+  <div id="combo-label"></div>
+  <div id="ascent-label" style="display:none">ASCENT 0%</div>
+  <div id="ascent-bar-track" style="display:none"><div id="ascent-bar-fill"></div></div>
+</div>
+
+<div id="phase-dots">
+  <div class="dot-row"><div class="dot" id="d1"></div><div class="dot-label">CAVE</div></div>
+  <div class="dot-row"><div class="dot" id="d2"></div><div class="dot-label">BREAK</div></div>
+  <div class="dot-row"><div class="dot" id="d3"></div><div class="dot-label">ASCEND</div></div>
+  <div class="dot-row"><div class="dot" id="d4"></div><div class="dot-label">EMERGE</div></div>
+  <div class="dot-row"><div class="dot" id="d5"></div><div class="dot-label">COMPLETE</div></div>
+</div>
+
+<button id="bounce-btn" ontouchstart="doBounce()" onclick="doBounce()">BOUNCE ↑↑ [SPACE]</button>
+
+<div id="motion-status">
+  <div id="mp-status">● POSE: LOADING</div>
+  <div id="hip-y-display"></div>
+</div>
+
+<div id="complete-overlay">
+  <div id="complete-main">AIM UP</div>
+  <div id="complete-sub">God in a circle — bounding the infinite</div>
+  <div id="complete-tag">ANAGAGE COMPLETE</div>
+</div>
+
+<script>
+// ── BOOT LINES ─────────────────────────────────────────────────────────────
+const BOOT_LINES=[
+  {text:"You wake in a cave.",        phase:1},
+  {text:"The wall flickers —",        phase:1},
+  {text:"shadows of shadows.",        phase:1},
+  {text:"This is not reality.",       phase:1},
+  {text:"Bounce to rise.",            phase:2},
+  {text:"Find the rhythm.",           phase:2},
+  {text:"Every step counts.",         phase:2},
+  {text:"Pits and pearls.",           phase:3},
+  {text:"Digs and diamonds.",         phase:3},
+  {text:"Stomp the black post.",      phase:3},
+  {text:"Breathe through it.",        phase:3},
+  {text:"SMILE outward:",             phase:4},
+  {text:"Self → Moving →",           phase:4},
+  {text:"Interception →",            phase:4},
+  {text:"Lungs → Exteroception.",    phase:4},
+  {text:"The light is real.",         phase:4},
+  {text:"AIM UP.",                    phase:5},
+  {text:"For me that is Jesus.",      phase:5},
+  {text:"God in a circle —",         phase:5},
+  {text:"bounding the infinite.",     phase:5},
+];
+const PHASE_NAMES=["INITIALIZING","PLATO'S CAVE","BREAK FREE","ASCENDING","EMERGING","COMPLETE"];
+
+// ── GLOBAL STATE ───────────────────────────────────────────────────────────
+const S={
+  phase:0, t:0,
+  blinkTimer:0, eyeOpen:0,
+  energy:0, combo:0,
+  lastBounce:0, bounceAnim:0,
+  ascent:0, ascentVelocity:0,
+  bootIdx:0, bootTimer:0,
+  chainsBroken:0,
+  cameraY:-8, fireFlicker:0,
+  particles:[],
+  // Pose tracking
+  poseActive:false,
+  hipYHistory:[], lastHipY:null, hipVelDir:0, lastPeakTime:0,
+  handsUp:false,
+  // Three objects (assigned after build)
+  scene:null,camera3:null,renderer:null,
+  torchL1:null,torchL2:null,
+  fireParticles:[],
+  caveWall:null, shadowPlane:null, sctx:null, shadowTex:null,
+  chainGrp:null, chains:[],
+  chainPartGeo:null, cpPos:null, cpCol:null,
+  sunLight:null, skyMesh:null, crossGrp:null,
+  halfU:null,halfD:null,
+  poseDetector:null, cameraInst:null,
+};
+
+// ── BOOT TEXT ─────────────────────────────────────────────────────────────
+function advanceBootText(){
+  const available=BOOT_LINES.filter(l=>l.phase<=Math.max(1,S.phase+1));
+  S.bootIdx=(S.bootIdx+1)%available.length;
+  document.getElementById('boot-text').textContent=available[S.bootIdx].text;
+}
+
+// ── EYE ANIMATION ─────────────────────────────────────────────────────────
+function setEyeOpen(v){
+  // v=0 fully closed, v=1 fully open
+  const pct=Math.round((1-v)*50);
+  document.getElementById('eye-top').style.height=pct+'%';
+  document.getElementById('eye-bot').style.height=pct+'%';
+  S.eyeOpen=v;
+}
+
+// ── PHASE DOTS ─────────────────────────────────────────────────────────────
+function updateDots(ph){
+  for(let i=1;i<=5;i++){
+    const d=document.getElementById('d'+i);
+    if(ph>=i){d.classList.add('lit');}
+    else{d.classList.remove('lit');}
+  }
+  const sub=document.getElementById('title-sub');
+  if(sub) sub.textContent=PHASE_NAMES[ph]||'';
+}
+
+// ── HUD UPDATE ────────────────────────────────────────────────────────────
+function updateHud(){
+  const eLabel=document.getElementById('energy-label');
+  const eFill=document.getElementById('energy-bar-fill');
+  const cLabel=document.getElementById('combo-label');
+  const aLabel=document.getElementById('ascent-label');
+  const aTrack=document.getElementById('ascent-bar-track');
+  const aFill=document.getElementById('ascent-bar-fill');
+  if(eLabel) eLabel.textContent='ENERGY '+Math.round(S.energy*100)+'%';
+  if(eFill)  eFill.style.width=Math.round(S.energy*100)+'%';
+  if(cLabel) cLabel.textContent=S.combo>0?'COMBO ×'+S.combo:'';
+  if(aLabel){
+    aLabel.style.display=S.phase>=3?'block':'none';
+    aLabel.textContent='ASCENT '+Math.round(S.ascent*100)+'%';
+  }
+  if(aTrack) aTrack.style.display=S.phase>=3?'block':'none';
+  if(aFill)  aFill.style.width=Math.round(S.ascent*100)+'%';
+  const hud=document.getElementById('energy-hud');
+  if(hud) hud.classList.toggle('visible',S.phase>=1&&S.phase<=3);
+  const bb=document.getElementById('bounce-btn');
+  if(bb) bb.classList.toggle('visible',S.phase>=1&&S.phase<=3&&!S.poseActive);
+}
+
+// ── BOUNCE LOGIC ──────────────────────────────────────────────────────────
+function doBounce(){
+  if(S.phase<1||S.phase>3) return;
+  const now=Date.now();
+  const gap=now-S.lastBounce;
+  const good=gap>280&&gap<1500;
+  S.lastBounce=now;
+  S.bounceAnim=1.0;
+  const comboGain=good?1:-1;
+  S.combo=Math.max(0,Math.min(10,S.combo+comboGain));
+  const gain=0.042+S.combo*0.014;
+  S.energy=Math.min(1,S.energy+gain);
+  if(S.phase===1&&S.energy>0.18) S.phase=2;
+  if(S.phase===2&&S.energy>0.45) S.phase=3;
+  // Chain particle burst
+  for(let i=0;i<5;i++){
+    S.particles.push({
+      x:(Math.random()-.5)*2.5,y:S.cameraY+1+(Math.random()-.5),
+      z:-1.5+Math.random()*-2,
+      vx:(Math.random()-.5)*.09,vy:.05+Math.random()*.07,vz:(Math.random()-.5)*.05,
+      life:1.0,col:0xffd700
+    });
+  }
+  updateHud();
+}
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────────
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();doBounce();}
+});
+
+// ── THREE.JS CAVE BUILDER ─────────────────────────────────────────────────
+function buildScene(){
+  const container=document.getElementById('three-canvas');
+  const W=window.innerWidth,H=window.innerHeight;
+
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setClearColor(0x000000);
+  renderer.shadowMap.enabled=true;
+  container.appendChild(renderer.domElement);
+
+  const scene=new THREE.Scene();
+  scene.fog=new THREE.FogExp2(0x060300,0.14);
+
+  const cam=new THREE.PerspectiveCamera(70,W/H,0.1,80);
+  cam.position.set(0,-8,0);
+  cam.lookAt(0,-9,-10);
+
+  S.scene=scene; S.camera3=cam; S.renderer=renderer;
+
+  // Ambient
+  scene.add(new THREE.AmbientLight(0x110800,1));
+
+  // Cave tunnel walls
+  const wallMat=new THREE.MeshPhongMaterial({color:0x2a1800,side:THREE.BackSide,shininess:2});
+  for(let i=0;i<18;i++){
+    const seg=new THREE.Mesh(
+      new THREE.CylinderGeometry(4.5+Math.random()*.9,4+Math.random()*.7,5,14,1,true),
+      wallMat.clone()
+    );
+    seg.position.y=-14+i*5;
+    const pos=seg.geometry.attributes.position;
+    for(let v=0;v<pos.count;v++){
+      pos.setX(v,pos.getX(v)+(Math.random()-.5)*.7);
+      pos.setZ(v,pos.getZ(v)+(Math.random()-.5)*.7);
+    }
+    pos.needsUpdate=true;
+    scene.add(seg);
+  }
+
+  // Cave floor
+  const floor=new THREE.Mesh(
+    new THREE.PlaneGeometry(18,18),
+    new THREE.MeshPhongMaterial({color:0x100800})
+  );
+  floor.rotation.x=-Math.PI/2; floor.position.y=-13;
+  scene.add(floor);
+
+  // Plato's wall
+  const wCanvas=document.createElement('canvas');
+  wCanvas.width=512; wCanvas.height=384;
+  const wctx=wCanvas.getContext('2d');
+  wctx.fillStyle='#160a00'; wctx.fillRect(0,0,512,384);
+  for(let i=0;i<80;i++){
+    wctx.strokeStyle=`rgba(${50+Math.random()*20},${25+Math.random()*12},0,.35)`;
+    wctx.lineWidth=1+Math.random()*2.5;
+    wctx.beginPath();
+    wctx.moveTo(Math.random()*512,Math.random()*384);
+    wctx.lineTo(Math.random()*512,Math.random()*384);
+    wctx.stroke();
+  }
+  const wallTex=new THREE.CanvasTexture(wCanvas);
+  S.caveWall=new THREE.Mesh(
+    new THREE.PlaneGeometry(9,6.5),
+    new THREE.MeshPhongMaterial({map:wallTex,color:0x553300})
+  );
+  S.caveWall.position.set(0,-8,-5.5);
+  scene.add(S.caveWall);
+
+  // Shadow canvas
+  const shadowC=document.createElement('canvas');
+  shadowC.width=512; shadowC.height=256;
+  S.sctx=shadowC.getContext('2d');
+  S.shadowTex=new THREE.CanvasTexture(shadowC);
+  S.shadowPlane=new THREE.Mesh(
+    new THREE.PlaneGeometry(8,4),
+    new THREE.MeshBasicMaterial({map:S.shadowTex,transparent:true,opacity:.88})
+  );
+  S.shadowPlane.position.set(0,-7.6,-5.45);
+  scene.add(S.shadowPlane);
+
+  // Torches
+  const tMat=new THREE.MeshPhongMaterial({color:0x4a2800});
+  [-3.2,3.2].forEach(x=>{
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(.065,.1,.85,6),tMat);
+    t.position.set(x,-9.4,-4); scene.add(t);
+  });
+  S.torchL1=new THREE.PointLight(0xff6600,2.5,9); S.torchL1.position.set(-3.2,-9,-3.8); scene.add(S.torchL1);
+  S.torchL2=new THREE.PointLight(0xff4400,2.2,9); S.torchL2.position.set( 3.2,-9,-3.8); scene.add(S.torchL2);
+
+  // Fire particles
+  for(let i=0;i<50;i++){
+    const fp=new THREE.Mesh(
+      new THREE.SphereGeometry(.055,4,4),
+      new THREE.MeshBasicMaterial({color:0xff6600})
+    );
+    fp.userData={side:i<25?-3.2:3.2,phase:Math.random()*Math.PI*2,speed:.7+Math.random()*1.4,baseY:-9};
+    scene.add(fp); S.fireParticles.push(fp);
+  }
+
+  // Chains (6 links follow camera)
+  S.chainGrp=new THREE.Group(); scene.add(S.chainGrp);
+  const cMat=new THREE.MeshPhongMaterial({color:0x445566,shininess:90});
+  for(let i=0;i<6;i++){
+    const link=new THREE.Mesh(new THREE.TorusGeometry(.13,.032,7,10),cMat);
+    link.position.set((i%2===0?-1:1)*(.45+Math.floor(i/2)*.18),-1.2+Math.floor(i/2)*.3,-1.4);
+    link.rotation.y=Math.PI/2;
+    S.chainGrp.add(link); S.chains.push(link);
+  }
+
+  // Chain break particles (GPU-style point cloud)
+  const MAX_CP=240;
+  S.cpPos=new Float32Array(MAX_CP*3);
+  S.cpCol=new Float32Array(MAX_CP*3);
+  const cpGeo=new THREE.BufferGeometry();
+  cpGeo.setAttribute('position',new THREE.BufferAttribute(S.cpPos,3));
+  cpGeo.setAttribute('color',   new THREE.BufferAttribute(S.cpCol,3));
+  S.chainPartGeo=cpGeo;
+  const chainParts=new THREE.Points(cpGeo,new THREE.PointsMaterial({size:.1,vertexColors:true,transparent:true,opacity:.92}));
+  scene.add(chainParts);
+
+  // Exit light + sky
+  S.sunLight=new THREE.PointLight(0xfff8e0,.0,30); S.sunLight.position.set(0,32,-4); scene.add(S.sunLight);
+  S.skyMesh=new THREE.Mesh(
+    new THREE.SphereGeometry(9,24,14),
+    new THREE.MeshBasicMaterial({color:0x87ceeb,side:THREE.BackSide,transparent:true,opacity:0})
+  );
+  S.skyMesh.position.y=32; scene.add(S.skyMesh);
+
+  // Gold cross at summit
+  S.crossGrp=new THREE.Group(); S.crossGrp.position.set(0,34,-5.5);
+  const gm=new THREE.MeshBasicMaterial({color:0xffd700});
+  const vb=new THREE.Mesh(new THREE.BoxGeometry(.16,2.4,.16),gm);
+  const hb=new THREE.Mesh(new THREE.BoxGeometry(1.3,.16,.16),gm);
+  hb.position.y=.45; S.crossGrp.add(vb,hb);
+  S.crossGrp.visible=false; scene.add(S.crossGrp);
+
+  // Rocks as scenery
+  const rockMat=new THREE.MeshPhongMaterial({color:0x221100,shininess:1});
+  for(let i=0;i<14;i++){
+    const r=new THREE.Mesh(
+      new THREE.DodecahedronGeometry(.2+Math.random()*.5,0),rockMat.clone()
+    );
+    const angle=Math.random()*Math.PI*2;
+    r.position.set(Math.cos(angle)*3.2+Math.random()*.8,-12.8+Math.random()*.4,Math.sin(angle)*3-1);
+    r.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);
+    scene.add(r);
+  }
+
+  window.addEventListener('resize',()=>{
+    const nW=window.innerWidth,nH=window.innerHeight;
+    renderer.setSize(nW,nH);
+    cam.aspect=nW/nH; cam.updateProjectionMatrix();
+  });
+}
+
+// ── SHADOW DRAWING ─────────────────────────────────────────────────────────
+function drawShadows(t,flicker){
+  const ctx=S.sctx;
+  ctx.clearRect(0,0,512,256);
+  ctx.fillStyle=`rgba(0,0,0,${.65+flicker*.18})`; ctx.fillRect(0,0,512,256);
+  // Three moving humans
+  [[88,130,1.05+Math.sin(t*.9)*.12, t*.72],
+   [256,100,1.45+Math.sin(t*.55)*.14, t*.48],
+   [418,145,.85+Math.sin(t*1.2)*.09, t*.63]].forEach(([x,y,s,ang])=>{
+    ctx.save(); ctx.translate(x+Math.sin(ang)*28,y); ctx.scale(s,s);
+    ctx.fillStyle=`rgba(255,130,0,${.16+flicker*.07})`;
+    ctx.beginPath(); ctx.arc(0,-30,13,0,Math.PI*2); ctx.fill();
+    ctx.fillRect(-9,-16,18,38); ctx.fillRect(-20,20,11,24); ctx.fillRect(9,20,11,24);
+    // Arm wave
+    ctx.fillRect(-22+Math.sin(ang*1.3)*8,-5,8,22); ctx.fillRect(14+Math.sin(ang*.9)*6,-5,8,22);
+    ctx.restore();
+  });
+  // Flying bird
+  const bx=60+((t*60)%480), by=55+Math.sin(t*2.2)*18;
+  ctx.save(); ctx.translate(bx,by); ctx.scale(.9,.9);
+  ctx.fillStyle=`rgba(255,110,0,${.12+flicker*.05})`;
+  ctx.beginPath(); ctx.ellipse(0,0,22,8,Math.sin(t*3)*.28,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  // Dragon silhouette (appears mid-ascent for drama)
+  if(S.ascent>.3&&S.ascent<.8){
+    const dx=512-((t*40)%620), dy=180+Math.sin(t*1.4)*30;
+    ctx.save(); ctx.translate(dx,dy); ctx.scale(1.3,1.3);
+    ctx.fillStyle=`rgba(255,80,0,${.10+flicker*.04})`;
+    ctx.beginPath(); ctx.ellipse(0,0,40,16,Math.sin(t*.6)*.2,0,Math.PI*2); ctx.fill();
+    // Wings
+    ctx.beginPath();
+    ctx.moveTo(-20,-5); ctx.lineTo(-55,-35); ctx.lineTo(-30,10); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(20,-5); ctx.lineTo(55,-35); ctx.lineTo(30,10); ctx.fill();
+    ctx.restore();
+  }
+  S.shadowTex.needsUpdate=true;
+}
+
+// ── MAIN ANIMATION LOOP ────────────────────────────────────────────────────
+function mainLoop(){
+  requestAnimationFrame(mainLoop);
+  S.t+=.016;
+  const t=S.t;
+
+  // ── PHASE 0: SLEEP / BLINK ──────────────────────────────────────────────
+  if(S.phase===0){
+    S.blinkTimer+=.016;
+    let eo=0;
+    if(S.blinkTimer<1.0)       eo=0;
+    else if(S.blinkTimer<1.35) eo=(S.blinkTimer-1.0)/.35;
+    else if(S.blinkTimer<2.6)  eo=1;
+    else if(S.blinkTimer<2.82) eo=1-(S.blinkTimer-2.6)/.22;
+    else if(S.blinkTimer<3.35) eo=0;
+    else if(S.blinkTimer<3.7)  eo=(S.blinkTimer-3.35)/.35;
+    else{
+      eo=1; S.phase=1; updateDots(1);
+      document.getElementById('boot-text').textContent=BOOT_LINES[0].text;
+      document.getElementById('energy-hud').classList.add('visible');
+    }
+    setEyeOpen(eo);
+  }
+
+  // ── PHASES 1+: EYE OPEN ────────────────────────────────────────────────
+  if(S.phase>=1) setEyeOpen(1);
+
+  // ── BOOT TEXT CYCLING ──────────────────────────────────────────────────
+  if(S.phase>=1&&S.phase<=4){
+    S.bootTimer+=.016;
+    if(S.bootTimer>3.6){ S.bootTimer=0; advanceBootText(); }
+  }
+
+  // ── ENERGY DECAY ──────────────────────────────────────────────────────
+  if(S.phase>=2){
+    S.energy=Math.max(0,S.energy-.0028);
+    if(Date.now()-S.lastBounce>2100) S.combo=Math.max(0,S.combo-1);
+  }
+
+  // ── ASCENT ────────────────────────────────────────────────────────────
+  if(S.phase===3){
+    // Bonus if hands are up (pose tracking)
+    const handsBonus=S.handsUp?.003:0;
+    const rate=.0009+S.energy*.0032+S.combo*.0007+handsBonus;
+    S.ascent=Math.min(1,S.ascent+rate);
+    if(S.ascent>.3)  S.chainsBroken=Math.max(S.chainsBroken,2);
+    if(S.ascent>.62) S.chainsBroken=Math.max(S.chainsBroken,4);
+    if(S.ascent>.88) S.chainsBroken=Math.max(S.chainsBroken,6);
+    if(S.ascent>=1){ S.phase=4; updateDots(4); }
+  }
+
+  // ── PHASE 4: EMERGE ───────────────────────────────────────────────────
+  if(S.phase===4){
+    S.bootTimer+=.016;
+    if(S.bootTimer>38){
+      S.phase=5; updateDots(5);
+      document.getElementById('complete-overlay').classList.add('visible');
+      document.getElementById('boot-text').textContent='';
+    }
+  }
+
+  // ── CAMERA MOVEMENT ───────────────────────────────────────────────────
+  const targetY=-8+S.ascent*42;
+  S.cameraY+=(targetY-S.cameraY)*.042;
+  const bounce=S.bounceAnim*Math.sin(t*15)*.14;
+  S.bounceAnim*=.86;
+  S.camera3.position.set(Math.sin(t*.09)*.18, S.cameraY+bounce, 0);
+  S.camera3.lookAt(Math.sin(t*.07)*.12, S.cameraY-1.2, -10);
+
+  // ── FIRE FLICKER ──────────────────────────────────────────────────────
+  S.fireFlicker=.5+Math.sin(t*8.7)*.28+Math.sin(t*14.3)*.22;
+  const fi=S.fireFlicker;
+  S.torchL1.intensity=(2.2+fi*1.6)*(S.phase<=3?1:Math.max(0,1-S.ascent*1.5));
+  S.torchL2.intensity=(1.9+fi*1.3)*(S.phase<=3?1:Math.max(0,1-S.ascent*1.5));
+  S.torchL1.color.setHSL(.06+fi*.02,1,.48+fi*.1);
+  S.torchL2.color.setHSL(.04+fi*.015,1,.44+fi*.1);
+
+  // ── FIRE PARTICLES ────────────────────────────────────────────────────
+  S.fireParticles.forEach((fp,i)=>{
+    const ud=fp.userData;
+    const lt=t*ud.speed+ud.phase;
+    fp.position.set(ud.side+Math.sin(lt*3.2)*.2, ud.baseY+(Math.sin(lt)*.5+.5)*.9, -3.8+Math.sin(lt*2.4)*.08);
+    const lf=(Math.sin(lt*.8)+1)/2;
+    fp.material.color.setHSL(.05+lf*.04,1,.38+lf*.32);
+    fp.scale.setScalar(.4+lf*.6);
+    fp.visible=(S.cameraY<0);
+  });
+
+  // ── SHADOWS ───────────────────────────────────────────────────────────
+  if(S.phase<=2) drawShadows(t,fi);
+  S.shadowPlane.visible=(S.phase<=2);
+  S.caveWall.visible=(S.phase<=3);
+
+  // ── CHAINS ────────────────────────────────────────────────────────────
+  S.chainGrp.position.y=S.cameraY+2.4;
+  S.chains.forEach((ch,i)=>{
+    ch.visible=(i>=S.chainsBroken);
+    if(ch.visible) ch.rotation.z=Math.sin(t*2.1+i)*.16;
+  });
+
+  // ── CHAIN PARTICLES ───────────────────────────────────────────────────
+  S.particles=S.particles.filter(p=>p.life>0);
+  S.particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.z+=p.vz;p.life-=.024;});
+  const MAX_CP=240;
+  for(let i=0;i<MAX_CP;i++){
+    if(i<S.particles.length){
+      const p=S.particles[i];
+      S.cpPos[i*3]=p.x; S.cpPos[i*3+1]=p.y; S.cpPos[i*3+2]=p.z;
+      const col=new THREE.Color(p.col);
+      S.cpCol[i*3]=col.r*p.life; S.cpCol[i*3+1]=col.g*p.life; S.cpCol[i*3+2]=col.b*p.life;
+    } else {
+      S.cpPos[i*3]=S.cpPos[i*3+1]=S.cpPos[i*3+2]=9999;
+    }
+  }
+  S.chainPartGeo.attributes.position.needsUpdate=true;
+  S.chainPartGeo.attributes.color.needsUpdate=true;
+
+  // ── EXIT / LIGHT ──────────────────────────────────────────────────────
+  const em=Math.max(0,S.ascent-.45)*1.82;
+  S.sunLight.intensity=em*5;
+  S.skyMesh.material.opacity=em*.85;
+  S.scene.fog.density=Math.max(.02,.14-S.ascent*.12);
+  S.crossGrp.visible=(S.ascent>.9);
+  if(S.crossGrp.visible){
+    S.crossGrp.rotation.y=t*.45;
+    const brightness=.5+Math.sin(t*2.2)*.2;
+    S.crossGrp.children.forEach(m=>m.material.color.setHSL(.12,1,brightness));
+  }
+
+  // ── HUD ───────────────────────────────────────────────────────────────
+  updateHud(); updateDots(S.phase);
+
+  S.renderer.render(S.scene,S.camera3);
+}
+
+// ── MEDIAPIPE POSE SETUP ──────────────────────────────────────────────────
+async function initMediaPipe(){
+  const mpStatus=document.getElementById('mp-status');
+  mpStatus.textContent='● POSE: LOADING'; mpStatus.className='';
+
+  // Wait for scripts
+  let attempts=0;
+  while((typeof Pose==='undefined'||typeof Camera==='undefined')&&attempts<40){
+    await new Promise(r=>setTimeout(r,300)); attempts++;
+  }
+  if(typeof Pose==='undefined'){
+    mpStatus.textContent='● POSE: UNAVAILABLE'; mpStatus.className='error';
+    document.getElementById('bounce-btn').classList.add('visible');
+    return false;
+  }
+
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user',width:{ideal:320},height:{ideal:240}},audio:false
+    });
+    const vid=document.getElementById('userVideo');
+    vid.srcObject=stream; await vid.play();
+
+    const pCanvas=document.getElementById('poseCanvas');
+    pCanvas.width=120; pCanvas.height=160;
+    const pctx=pCanvas.getContext('2d');
+
+    const pose=new Pose({
+      locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`
+    });
+    pose.setOptions({
+      modelComplexity:0,           // Lite model — lower latency on mobile
+      smoothLandmarks:true,
+      minDetectionConfidence:.5,
+      minTrackingConfidence:.45,
+      enableSegmentation:false,
+    });
+
+    pose.onResults(results=>{
+      // Draw mirrored skeleton on PiP canvas
+      pctx.clearRect(0,0,120,160);
+      pctx.save(); pctx.translate(120,0); pctx.scale(-1,1);
+      if(results.image) pctx.drawImage(results.image,0,0,120,160);
+      pctx.restore();
+
+      if(!results.poseLandmarks) return;
+      const lm=results.poseLandmarks;
+
+      // Draw skeleton dots
+      pctx.save(); pctx.translate(120,0); pctx.scale(-1,1);
+      const keyPoints=[0,11,12,13,14,15,16,23,24,25,26,27,28];
+      keyPoints.forEach(i=>{
+        const l=lm[i]; if(!l||l.visibility<.3) return;
+        pctx.beginPath();
+        pctx.arc(l.x*120,l.y*160,2.5,0,Math.PI*2);
+        pctx.fillStyle='#ffd700'; pctx.fill();
+      });
+      // Connections
+      [[11,13],[13,15],[12,14],[14,16],[11,12],[23,24],[11,23],[12,24],[23,25],[24,26],[25,27],[26,28]].forEach(([a,b])=>{
+        const la=lm[a],lb=lm[b]; if(!la||!lb||la.visibility<.3||lb.visibility<.3) return;
+        pctx.beginPath();
+        pctx.moveTo(la.x*120,la.y*160);
+        pctx.lineTo(lb.x*120,lb.y*160);
+        pctx.strokeStyle='rgba(255,215,0,.5)'; pctx.lineWidth=1; pctx.stroke();
+      });
+      pctx.restore();
+
+      // ── EXTRACT BOUNCE DATA ───────────────────────────────────────────
+      // Hip Y (avg left 23 + right 24). In MediaPipe, Y increases downward.
+      // When person bounces UP, hips move to smaller Y.
+      const lHip=lm[23],rHip=lm[24];
+      if(lHip&&rHip&&lHip.visibility>.35&&rHip.visibility>.35){
+        const hipY=(lHip.y+rHip.y)/2;
+
+        // Keep rolling window
+        S.hipYHistory.push({y:hipY,t:Date.now()});
+        if(S.hipYHistory.length>20) S.hipYHistory.shift();
+
+        // Detect upward peak → bounce event
+        if(S.lastHipY!==null){
+          const dy=hipY-S.lastHipY;  // negative = moving up (rising)
+          const prevDir=S.hipVelDir;
+          S.hipVelDir=dy<-.004?-1:dy>.004?1:0;
+          // Zero-crossing from falling→rising or: detect downward peak (landing)
+          if(prevDir===1&&S.hipVelDir===-1){
+            // Person just started going up — register bounce on landing
+          }
+          if(prevDir===-1&&S.hipVelDir===1){
+            // Person just landed (started going back down) → bounce registered
+            const now=Date.now();
+            if(now-S.lastPeakTime>250){ S.lastPeakTime=now; doBounce(); }
+          }
+        }
+        S.lastHipY=hipY;
+        document.getElementById('hip-y-display').textContent='HY:'+(hipY*.100).toFixed(0);
+      }
+
+      // Hands-up detection: wrists above shoulders
+      const lWrist=lm[15],rWrist=lm[16],lShoulder=lm[11],rShoulder=lm[12];
+      S.handsUp=(lWrist&&lShoulder&&lWrist.y<lShoulder.y-0.12)||
+                (rWrist&&rShoulder&&rWrist.y<rShoulder.y-0.12);
+    });
+
+    S.poseDetector=pose;
+
+    const camInst=new Camera(vid,{
+      onFrame:async()=>{
+        if(S.poseDetector&&S.phase>=1&&S.phase<=3){
+          try{await S.poseDetector.send({image:vid});}catch(e){}
+        }
+      },
+      width:320,height:240
+    });
+    camInst.start();
+    S.cameraInst=camInst;
+    S.poseActive=true;
+
+    document.getElementById('cam-panel').classList.add('visible');
+    mpStatus.textContent='● POSE: ACTIVE'; mpStatus.className='active';
+    // Hide manual bounce btn since pose is driving
+    document.getElementById('bounce-btn').classList.remove('visible');
+    return true;
+
+  }catch(err){
+    console.warn('Camera/Pose error:',err);
+    mpStatus.textContent='● POSE: ERROR'; mpStatus.className='error';
+    document.getElementById('bounce-btn').classList.add('visible');
+    return false;
+  }
+}
+
+// ── ENTRY POINTS ──────────────────────────────────────────────────────────
+function startWithCamera(){
+  document.getElementById('cam-prompt').style.display='none';
+  buildScene();
+  mainLoop();
+  setTimeout(()=>initMediaPipe(),800);
+}
+
+function startWithoutCamera(){
+  document.getElementById('cam-prompt').style.display='none';
+  document.getElementById('mp-status').textContent='● POSE: KEYBOARD MODE';
+  buildScene();
+  mainLoop();
+  // Show bounce button immediately once cave starts
+  setTimeout(()=>{
+    if(S.phase>=1) document.getElementById('bounce-btn').classList.add('visible');
+  },2000);
+}
+</script>
+</body>
+</html>

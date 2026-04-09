@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Marvin World v6 — Marvin Creek</title>
+<title>Marvin World — Marvin Creek</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Bebas+Neue&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -95,7 +95,41 @@ const NPCS = {
     hat: [80, 30, 10],
     label: "Durst",
     lines: ["Regardless of your blessing, it goes through.", "This trail is happening. Period.", "Your objections are noted and ignored.", "The community wants this trail."]
-  }],
+  }, {
+    id: "afr",
+    x: 4.5,
+    z: 4.5,
+    color: [34, 139, 34],
+    hat: [20, 100, 20],
+    label: "Afroman",
+    ally: false,
+    allyMode: "developer",
+    lines: [
+      "I beat the government. You won't beat these homeowners.",
+      "Void ab initio, cuzz. Your paperwork is worthless.",
+      "First Amendment doesn't care about your trail.",
+      "I made hit records from my porch. They have lawyers. Guess who won.",
+      "Go ahead. File another MTD. I'll wait."
+    ]
+  }, {
+    id: "lmm",
+    x: 13.5,
+    z: 4.5,
+    color: [139, 0, 0],
+    hat: [100, 0, 0],
+    label: "Lin-Manuel",
+    ally: false,
+    allyMode: "developer",
+    lines: [
+      "I'm not throwing away my shot — but you already threw yours.",
+      "History has its eyes on you. It does not like what it sees.",
+      "You talk about the $1 deal like it's a win. It's the setup.",
+      "Daveed Diggs played Jefferson. You're playing the villain.",
+      "The room where it happened — the record got in."
+    ]
+  }
+],
+
   neighbor: [{
     id: "bo",
     x: 5.5,
@@ -128,6 +162,38 @@ const NPCS = {
     hat: [100, 150, 60],
     label: "Marcolesi",
     lines: ["The 2019 survey was leading. I said so publicly.", "Word cloud does not match the raw data.", "Four words deleted: not, more, commercial, development.", "I support the new council direction."]
+  }, {
+    id: "afr",
+    x: 3.5,
+    z: 3.5,
+    color: [34, 139, 34],
+    hat: [20, 100, 20],
+    label: "Afroman",
+    ally: true,
+    allyMode: "neighbor",
+    lines: [
+      "I won 13 counts on a jury verdict. Keep going.",
+      "They tried to suppress me too. First Amendment held.",
+      "The law is on your side. Don't throw away your shot.",
+      "I got raided for nothing. You got easement-d for $1. Same energy.",
+      "Cuzz — void ab initio means they never had it."
+    ]
+  }, {
+    id: "lmm",
+    x: 14.5,
+    z: 3.5,
+    color: [139, 0, 0],
+    hat: [100, 0, 0],
+    label: "Lin-Manuel",
+    ally: true,
+    allyMode: "neighbor",
+    lines: [
+      "History has its eyes on you.",
+      "You have no control who lives, who dies, who tells your story.",
+      "Not throwing away my shot — and neither should you.",
+      "Look around, look around at how lucky we are to be alive right now.",
+      "Rise up. The record speaks for itself."
+    ]
   }]
 };
 const LANDMARKS = [{
@@ -236,6 +302,38 @@ const MISS = {
     id: "m5",
     title: "Secure the Bresnick Admission",
     tip: "Talk to Bresnick"
+  }, {
+    id: "afr",
+    x: 3.5,
+    z: 3.5,
+    color: [34, 139, 34],
+    hat: [20, 100, 20],
+    label: "Afroman",
+    ally: true,
+    allyMode: "neighbor",
+    lines: [
+      "I won 13 counts on a jury verdict. Keep going.",
+      "They tried to suppress me too. First Amendment held.",
+      "The law is on your side. Don't throw away your shot.",
+      "I got raided for nothing. You got easement-d for $1. Same energy.",
+      "Cuzz — void ab initio means they never had it."
+    ]
+  }, {
+    id: "lmm",
+    x: 14.5,
+    z: 3.5,
+    color: [139, 0, 0],
+    hat: [100, 0, 0],
+    label: "Lin-Manuel",
+    ally: true,
+    allyMode: "neighbor",
+    lines: [
+      "History has its eyes on you.",
+      "You have no control who lives, who dies, who tells your story.",
+      "Not throwing away my shot — and neither should you.",
+      "Look around, look around at how lucky we are to be alive right now.",
+      "Rise up. The record speaks for itself."
+    ]
   }]
 };
 
@@ -387,7 +485,7 @@ const CYOA_N = [{
   char: "The Record",
   isEnd: true,
   endType: "win",
-  text: "The easement is returned. The $1 instrument is void. The trail does not run behind your home. The CCRs stand. The Dirty Harry letter, the hot mic, the dishwasher argument — all still in the Case Room. Permanently. Free. Public.",
+  text: "The easement is returned. The $1 instrument is void. The trail does not run behind your home. The CCRs stand. The Dirty Harry letter, the hot mic, the dishwasher argument — all still in the The Record. Permanently. Free. Public.",
   choices: []
 }, {
   id: "n_continue",
@@ -395,7 +493,7 @@ const CYOA_N = [{
   char: "The Record",
   isEnd: true,
   endType: "continue",
-  text: "The case continues. The injunction is operative. The preservation demand goes out. No defendant has answered. The void ab initio theory has never been rebutted. The Case Room is public.",
+  text: "The case continues. The injunction is operative. The preservation demand goes out. No defendant has answered. The void ab initio theory has never been rebutted. The The Record is public.",
   choices: []
 }];
 const CYOA_D = [{
@@ -483,7 +581,7 @@ const CYOA_D = [{
   id: "d4",
   date: "Mar 26, 2026",
   char: "Jake Stewart",
-  text: "MAR-2 transmitted. Village-only easement return. Vandenberg carved out. Zero monetary. The Comiskeys read it on plain terms and shift the burden back. The Case Room is permanent. The hot mic is public.",
+  text: "MAR-2 transmitted. Village-only easement return. Vandenberg carved out. Zero monetary. The Comiskeys read it on plain terms and shift the burden back. The The Record is permanent. The hot mic is public.",
   choices: [{
     t: "The easement returns",
     nx: "d_settle"
@@ -494,7 +592,7 @@ const CYOA_D = [{
   char: "The Record",
   isEnd: true,
   endType: "settle",
-  text: "The easement is returned. The $1 instrument is void. Vandenberg is carved out — not protected. Her exposure remains. The Case Room is permanent. The record does not close because you settled.",
+  text: "The easement is returned. The $1 instrument is void. Vandenberg is carved out — not protected. Her exposure remains. The The Record is permanent. The record does not close because you settled.",
   choices: []
 }, {
   id: "d_defend",
@@ -948,7 +1046,8 @@ function App() {
       z: 8
     }),
     yawRef = useRef(0),
-    bobRef = useRef(0);
+    bobRef = useRef(0),
+    boostTimerRef = useRef(0);
   var modeRef = useRef(null),
     tickRef = useRef(0),
     ltRef = useRef(0);
@@ -996,6 +1095,9 @@ function App() {
   var scoreS = useState(0);
   var score = scoreS[0];
   var setScore = scoreS[1];
+  var boostTimerS = useState(0);
+  var boostTimer = boostTimerS[0];
+  var setBoostTimer = boostTimerS[1];
   var caseOverS = useState(false);
   var caseOver = caseOverS[0];
   var setCaseOver = caseOverS[1];
@@ -1072,10 +1174,25 @@ function App() {
         if (npc.id === "maye") doM("m2");
         if (npc.id === "christian") doM("m3");
         if (npc.id === "vandenberg") doM("m4");
+        // DEVELOPER CHALLENGE: AFR + LMM challenge, slow movement
+        if (npc.ally === false && npc.allyMode === "developer") {
+          boostTimerRef.current = Math.max(0, boostTimerRef.current - 80);
+          setBoostTimer(boostTimerRef.current);
+          setScore(s => Math.max(0, s - (npc.id === "lmm" ? 300 : 200)));
+          setLog(l => ["⚡ " + npc.label + " challenged you! -" + (npc.id === "lmm" ? 300 : 200) + " pts"].concat(l.slice(0,9)));
+        }
       } else {
         if (npc.id === "trull") doM("m2");
         if (npc.id === "bo") doM("m3");
         if (npc.id === "bresnick") doM("m5");
+        // ALLY BOOST: AFR and LMM give speed/score boost to neighbor
+        if (npc.ally && npc.allyMode === "neighbor") {
+          setScore(s => s + (npc.id === "lmm" ? 750 : 500));
+          var addBoost = npc.id === "lmm" ? 220 : 160;
+          boostTimerRef.current = Math.max(boostTimerRef.current, 0) + addBoost;
+          setBoostTimer(boostTimerRef.current);
+          setLog(l => ["⭐ " + npc.label + " POWER-UP! +" + (npc.id === "lmm" ? 750 : 500)].concat(l.slice(0,9)));
+        }
       }
       return;
     }
@@ -1274,6 +1391,11 @@ function App() {
       var dt = Math.min((now - ltRef.current) / 1000, 0.05);
       ltRef.current = now;
       tickRef.current++;
+      // Tick boost timer
+      if (boostTimerRef.current > 0) {
+        boostTimerRef.current = Math.max(0, boostTimerRef.current - dt);
+        if (boostTimerRef.current === 0) setBoostTimer(0);
+      }
       hairTRef.current += dt;
       var k = keysRef.current;
       var fwd = 0,
@@ -1305,7 +1427,8 @@ function App() {
           fz = Math.cos(yaw);
         var rx = Math.cos(yaw),
           rz = -Math.sin(yaw);
-        var step = 4.5 * dt;
+        var boostMult = boostTimerRef.current > 0 ? 1.6 : 1.0;
+      var step = 4.5 * dt * boostMult;
         var dmx = (fx * fwd + rx * str) * step,
           dmz = (fz * fwd + rz * str) * step;
         var px = posRef.current.x,
@@ -2068,7 +2191,7 @@ function App() {
       fontSize: 9,
       color: pc3
     }
-  }, done + "/" + missions.length + " missions")), React.createElement("button", {
+  }, (boostTimer > 0 ? "⚡ BOOSTED! " : "") + done + "/" + missions.length + " missions")), React.createElement("button", {
     onClick: function () {
       setMode(null);
       modeRef.current = null;

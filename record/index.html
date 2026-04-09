@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>The Record — Comiskey Case Analyzer v12</title>
+<title>Marvin Creek — The Record</title>
 <meta name="description" content="Comiskey v. Village of Marvin — Interactive litigation intelligence platform"/>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3620,6 +3620,9 @@ function HeelSplitterGame() {
   const initState = useCallback(() => {
     const dots = [];
     const maze = MAZE.map(r => [...r]);
+    // Open tunnel passages: col 10 top/bottom, rows 8+12 already open on sides
+    maze[0][10] = 0;
+    maze[ROWS - 1][10] = 0;
     let totalDots = 0;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       if (maze[r][c] === 0 || maze[r][c] === 3) {
@@ -3704,8 +3707,10 @@ function HeelSplitterGame() {
         homeY: 11
       }],
       allies: [
-        { id:"AFR", cx:3, cy:3, active:true, collected:false, timer:0 },
-        { id:"LMM", cx:17, cy:3, active:true, collected:false, timer:0 }
+        { id:"AFR", cx:3, cy:3, cpx:3*22+11, cpy:3*22+11, active:false, collected:false,
+          spawnTimer:180, dx:1, dy:0, moveTimer:0, fleeSpeed:1.4, homeX:3, homeY:3 },
+        { id:"LMM", cx:17, cy:3, cpx:17*22+11, cpy:3*22+11, active:false, collected:false,
+          spawnTimer:300, dx:-1, dy:0, moveTimer:0, fleeSpeed:1.2, homeX:17, homeY:3 }
       ],
       allyRespawn: 0,
       score: 0,
@@ -3718,8 +3723,11 @@ function HeelSplitterGame() {
       deadTimer: 0
     };
   }, []);
+  const TUNNEL_ROWS = [8, 12]; // rows with left/right side tunnels
+  const TUNNEL_COLS = [10];    // col with top/bottom tunnels
   const canMove = (maze, c, r) => {
-    if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return false;
+    if (c < 0 || c >= COLS) return TUNNEL_ROWS.includes(r);
+    if (r < 0 || r >= ROWS) return TUNNEL_COLS.includes(c);
     const v = maze[r][c];
     return v !== 1;
   };
@@ -3822,15 +3830,18 @@ function HeelSplitterGame() {
       ctx.fillText(g.name, gx, gy + CELL / 2 + 8);
     }
 
-    // Draw ALLY power-up characters
+    // Draw ALLY power-up characters (roaming/fleeing)
     const CELL2 = CELL;
     (st.allies || []).forEach(function(ally) {
       if (!ally.active || ally.collected) return;
-      const ax = ally.cx * CELL2 + CELL2/2;
-      const ay = ally.cy * CELL2 + CELL2/2;
-      const bob2 = Math.sin(t / 300 + (ally.id === "LMM" ? 1.5 : 0)) * 2.5;
+      const ax = ally.cpx;
+      const ay = ally.cpy;
+      // Distance to player for flee indicator
+      var adist = Math.sqrt(Math.pow(st.pxp - ax, 2) + Math.pow(st.pyp - ay, 2));
+      var fleeing2 = adist < 80;
+      const bob2 = fleeing2 ? Math.sin(t / 80) * 3 : Math.sin(t / 300 + (ally.id === "LMM" ? 1.5 : 0)) * 2.5;
       const ay2 = ay + bob2;
-      const glow2 = 0.5 + 0.5 * Math.sin(t / 200);
+      const glow2 = fleeing2 ? (0.5 + 0.5 * Math.sin(t / 60)) : (0.5 + 0.5 * Math.sin(t / 200));
 
       if (ally.id === "AFR") {
         // ── AFROMAN: puff of Afro + American flag ──────────────────────────
@@ -3928,12 +3939,51 @@ function HeelSplitterGame() {
         ctx.restore();
       }
 
-      // Collect label
+      // Catch indicator
       ctx.fillStyle = ally.id === "AFR" ? "#228B22" : "#c8a96e";
       ctx.font = "bold 7px 'IBM Plex Mono'";
       ctx.textAlign = "center";
-      ctx.fillText(ally.id, ax, ay2 + CELL2 * 0.8);
+      ctx.fillText(fleeing2 ? "CATCH!" : ally.id, ax, ay2 + CELL2 * 0.8);
+      // Spawn flash halo
+      if (!fleeing2) {
+        ctx.strokeStyle = (ally.id === "AFR" ? "#228B22" : "#c8a96e") + Math.floor(40 + glow2*80).toString(16).padStart(2,'0');
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(ax, ay2, CELL2 * 0.72, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     });
+
+    // Draw tunnel portal indicators
+    const tunnelCols = [10];
+    const tunnelRws = [8, 12];
+    ctx.fillStyle = "rgba(68,136,255,0.18)";
+    // Left/right portals
+    tunnelRws.forEach(function(tr) {
+      ctx.fillRect(0, tr * CELL, CELL, CELL);
+      ctx.fillRect((COLS - 1) * CELL, tr * CELL, CELL, CELL);
+    });
+    // Top/bottom portals
+    tunnelCols.forEach(function(tc) {
+      ctx.fillRect(tc * CELL, 0, CELL, CELL);
+      ctx.fillRect(tc * CELL, (ROWS - 1) * CELL, CELL, CELL);
+    });
+    ctx.strokeStyle = "rgba(68,136,255,0.6)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    tunnelRws.forEach(function(tr) {
+      ctx.beginPath(); ctx.moveTo(0, tr * CELL + CELL / 2);
+      ctx.lineTo(CELL, tr * CELL + CELL / 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo((COLS - 1) * CELL, tr * CELL + CELL / 2);
+      ctx.lineTo(COLS * CELL, tr * CELL + CELL / 2); ctx.stroke();
+    });
+    tunnelCols.forEach(function(tc) {
+      ctx.beginPath(); ctx.moveTo(tc * CELL + CELL / 2, 0);
+      ctx.lineTo(tc * CELL + CELL / 2, CELL); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tc * CELL + CELL / 2, (ROWS - 1) * CELL);
+      ctx.lineTo(tc * CELL + CELL / 2, ROWS * CELL); ctx.stroke();
+    });
+    ctx.setLineDash([]);
 
     // Draw Carolina Heel Splitter (mussel/bivalve shape)
     const px = st.pxp,
@@ -4067,9 +4117,11 @@ function HeelSplitterGame() {
       const spd = g.scared ? GSPEED_SCARED : GSPEED;
       g.cpx += g.dx * spd * dt / 16;
       g.cpy += g.dy * spd * dt / 16;
-      // Wrap
-      if (g.cpx < 0) g.cpx = COLS * CELL;
-      if (g.cpx > COLS * CELL) g.cpx = 0;
+      // Wrap — all 4 sides
+      if (g.cpx < -CELL / 2) g.cpx = COLS * CELL + CELL / 2;
+      if (g.cpx > COLS * CELL + CELL / 2) g.cpx = -CELL / 2;
+      if (g.cpy < -CELL / 2) g.cpy = ROWS * CELL + CELL / 2;
+      if (g.cpy > ROWS * CELL + CELL / 2) g.cpy = -CELL / 2;
     };
     const loop = ts => {
       const dt = Math.min(ts - lastRef.current, 50);
@@ -4116,9 +4168,11 @@ function HeelSplitterGame() {
             st.pdy = 0;
           }
         }
-        // Wrap tunnels
-        if (st.pxp < 0) st.pxp = COLS * CELL;
-        if (st.pxp > COLS * CELL) st.pxp = 0;
+        // Wrap tunnels — all 4 sides (Pac-Man style)
+        if (st.pxp < -CELL / 2) st.pxp = COLS * CELL + CELL / 2;
+        if (st.pxp > COLS * CELL + CELL / 2) st.pxp = -CELL / 2;
+        if (st.pyp < -CELL / 2) st.pyp = ROWS * CELL + CELL / 2;
+        if (st.pyp > ROWS * CELL + CELL / 2) st.pyp = -CELL / 2;
         // Facing
         if (st.pdx > 0) st.facing = 0;else if (st.pdx < 0) st.facing = Math.PI;else if (st.pdy > 0) st.facing = Math.PI / 2;else if (st.pdy < 0) st.facing = -Math.PI / 2;
         // Mouth animation
@@ -4140,7 +4194,7 @@ function HeelSplitterGame() {
             st.maze[epr][epc] = 2;
             st.score += 50;
             st.dotsLeft--;
-            st.scaredTimer = 500;
+            st.scaredTimer = 1800;
             st.ghosts.forEach(g => {
               g.scared = true;
               g.eaten = false;
@@ -4167,41 +4221,96 @@ function HeelSplitterGame() {
             });
           }
         }
-        // Check ally collection (Afroman + Lin-Manuel power-ups)
+        // ── ALLY FLEE MECHANIC ─────────────────────────────────────────
         (st.allies || []).forEach(function(ally) {
-          if (!ally.active || ally.collected) return;
-          const adx = st.pxp - (ally.cx * 22 + 11);
-          const ady = st.pyp - (ally.cy * 22 + 11);
-          if (Math.sqrt(adx*adx + ady*ady) < 18) {
-            ally.collected = true;
+          // Spawn timer: count down until ally appears
+          if (!ally.active) {
+            ally.spawnTimer -= dt;
+            if (ally.spawnTimer <= 0) {
+              ally.active = true;
+              ally.collected = false;
+              ally.cx = ally.homeX; ally.cy = ally.homeY;
+              ally.cpx = ally.cx * 22 + 11; ally.cpy = ally.cy * 22 + 11;
+              ally.spawnTimer = ally.id === "AFR" ? 600 : 900;
+              st.particles.push({x:ally.cpx, y:ally.cpy,
+                text: ally.id === "AFR" ? "🎵 CATCH AFROMAN!" : "🎭 CATCH LIN-MANUEL!",
+                color: ally.id === "AFR" ? "#228B22" : "#c8a96e",
+                life:1.8, size:11, vx:0, vy:-0.4});
+            }
+            return;
+          }
+          if (ally.collected) return;
+
+          // Distance to player
+          var adx = st.pxp - ally.cpx;
+          var ady = st.pyp - ally.cpy;
+          var dist2 = Math.sqrt(adx*adx + ady*ady);
+
+          // Caught!
+          if (dist2 < 16) {
             ally.active = false;
+            ally.collected = true;
+            ally.spawnTimer = ally.id === "AFR" ? 700 : 1000;
             if (ally.id === "AFR") {
-              // Afroman: +500 pts + double speed briefly + scared extension
               st.score += 500;
               st.pSpeed = Math.min(st.pSpeed * 1.6, 4.2);
-              st.scaredTimer = Math.max(st.scaredTimer, 0) + 600;
+              st.scaredTimer = Math.max(st.scaredTimer || 0, 0) + 1200;
               st.ghosts.forEach(function(g) { g.scared = true; g.eaten = false; });
-              st.particles.push({x: ally.cx*22, y: ally.cy*22, text: "🎵 +500 FIRST AMENDMENT POWER!", color:"#228B22", life:1.5, size:12, vx:0, vy:-0.4});
+              st.particles.push({x:ally.cpx, y:ally.cpy, text:"🎵 +500 FIRST AMENDMENT POWER!", color:"#228B22", life:1.8, size:13, vx:0, vy:-0.5});
             } else {
-              // Lin-Manuel: +750 pts + ghosts freeze 2s + "HAMILTON!" bonus
               st.score += 750;
-              st.allyRespawn = 800;
-              st.scaredTimer = Math.max(st.scaredTimer, 0) + 900;
+              st.scaredTimer = Math.max(st.scaredTimer || 0, 0) + 1200;
               st.ghosts.forEach(function(g) { g.scared = true; g.eaten = false; });
-              st.particles.push({x: ally.cx*22, y: ally.cy*22, text: "🎭 +750 NOT THROWING AWAY MY SHOT!", color:"#c8a96e", life:1.8, size:12, vx:0, vy:-0.4});
+              st.particles.push({x:ally.cpx, y:ally.cpy, text:"🎭 +750 NOT THROWING AWAY MY SHOT!", color:"#c8a96e", life:2, size:13, vx:0, vy:-0.5});
             }
+            return;
+          }
+
+          // Flee movement: update every ~8 ticks or when close
+          ally.moveTimer = (ally.moveTimer || 0) + dt;
+          var moveInterval = dist2 < 60 ? 4 : 12; // flee faster when player close
+          if (ally.moveTimer >= moveInterval) {
+            ally.moveTimer = 0;
+            var speed = ally.fleeSpeed;
+            var ndx = ally.dx, ndy = ally.dy;
+
+            if (dist2 < 80) {
+              // Flee: pick direction away from player
+              var fx = -(adx > 0 ? 1 : -1);
+              var fy = -(ady > 0 ? 1 : -1);
+              // Try preferred flee direction
+              var attempts = [[fx,0],[0,fy],[-fx,0],[0,-fy],[fx,fy],[-fx,-fy]];
+              var moved = false;
+              for (var ai = 0; ai < attempts.length; ai++) {
+                var td = attempts[ai];
+                var nc = Math.round((ally.cpx + td[0]*22 - 11) / 22);
+                var nr = Math.round((ally.cpy + td[1]*22 - 11) / 22);
+                if (nc >= 0 && nc < 21 && nr >= 0 && nr < 19 && (st.maze[nr]||[])[nc] !== 1) {
+                  ndx = td[0]; ndy = td[1]; moved = true; break;
+                }
+              }
+              if (!moved) { ndx = -ally.dx; ndy = -ally.dy; }
+            } else {
+              // Wander randomly
+              if (Math.random() < 0.35) {
+                var dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+                var d = dirs[Math.floor(Math.random()*4)];
+                var nc2 = ally.cx + d[0], nr2 = ally.cy + d[1];
+                if (nc2 >= 0 && nc2 < 21 && nr2 >= 0 && nr2 < 19 && (st.maze[nr2]||[])[nc2] !== 1) {
+                  ndx = d[0]; ndy = d[1];
+                }
+              }
+            }
+
+            // Move pixel position
+            var newCpx = ally.cpx + ndx * speed * 22 * 0.18;
+            var newCpy = ally.cpy + ndy * speed * 22 * 0.18;
+            ally.cpx = newCpx; ally.cpy = newCpy;
+            ally.cx = Math.round((ally.cpx - 11) / 22);
+            ally.cy = Math.round((ally.cpy - 11) / 22);
+            ally.dx = ndx || ally.dx; ally.dy = ndy || ally.dy;
           }
         });
-        // Respawn allies after delay
-        if (st.allyRespawn > 0) {
-          st.allyRespawn -= dt;
-          if (st.allyRespawn <= 0) {
-            st.allyRespawn = 0;
-            (st.allies || []).forEach(function(ally) {
-              if (ally.collected) { ally.collected = false; ally.active = true; }
-            });
-          }
-        }
         // Move ghosts
         st.ghosts.forEach(g => moveGhost(g, st, dt));
         // Check ghost collision
@@ -6549,7 +6658,7 @@ function TheRecord() {
       marginLeft: 14,
       letterSpacing: 2
     })
-  }, "v7 \xB7 CASES \xB7 AI \xB7 ACTORS \xB7 VOM \xB7 MARVIN WORLD \xB7 ADMIN \xB7 COMMENTS \xB7 04/07/2026")), !isSG && !isTutor && !isGame && !isMatrix && !isDocMap && !isSettlement && !isAI && !isActors && !isVOM && !isAdmin && !isComments && !isMarvin && /*#__PURE__*/React.createElement("button", {
+  }, "CASES \xB7 AI \xB7 ACTORS \xB7 VOM \xB7 MARVIN WORLD \xB7 ADMIN \xB7 COMMENTS \xB7 04/07/2026")), !isSG && !isTutor && !isGame && !isMatrix && !isDocMap && !isSettlement && !isAI && !isActors && !isVOM && !isAdmin && !isComments && !isMarvin && /*#__PURE__*/React.createElement("button", {
     onClick: () => setTl(x => !x),
     style: {
       ...chip(T.teal, T.tD),
@@ -13783,7 +13892,7 @@ function CommentsTab() {
       marginBottom: 24,
       fontStyle: 'italic'
     }
-  }, "You must be a verified commenter. Comments are reviewed by admin before publication. Accuracy is required \u2014 the Case Room is a factual record."), submitStatus && /*#__PURE__*/React.createElement("div", {
+  }, "You must be a verified commenter. Comments are reviewed by admin before publication. Accuracy is required \u2014 The Record is a factual record."), submitStatus && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 12,
       background: statusColors[submitStatus] + '12',
@@ -13902,7 +14011,7 @@ function MarvinWorldTab() {
     icon: "📄",
     col: "#7fff00",
     label: "DOCUMENT MECHANIC",
-    desc: "12 collectible documents scattered across the map, each linked to its Case Room exhibit. Green dots on the minimap mark uncollected items."
+    desc: "12 collectible documents scattered across the map, each linked to its The Record exhibit. Green dots on the minimap mark uncollected items."
   }, {
     icon: "⚖️",
     col: T.green,
@@ -14168,7 +14277,7 @@ document.getElementById('loading').style.display = 'none';
 
 <div id="cr-gate" style="display:none;position:fixed;inset:0;background:#07090c;z-index:9999;flex-direction:column;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;padding:32px;">
   <div style="font-size:9px;color:#c8a96e;letter-spacing:5px;text-transform:uppercase;margin-bottom:12px;">Marvin Creek</div>
-  <div style="font-family:'Georgia',serif;font-size:clamp(36px,8vw,72px);font-weight:900;color:#f0ead8;line-height:0.95;text-align:center;margin-bottom:8px;">THE<br><em style="color:#cc3333;">CASE<br>ROOM</em></div>
+  <div style="font-family:'Georgia',serif;font-size:clamp(36px,8vw,72px);font-weight:900;color:#f0ead8;line-height:0.95;text-align:center;margin-bottom:8px;">THE<br><em style="color:#cc3333;">RECORD</em></div>
   <div style="font-size:9px;color:#3a4860;letter-spacing:3px;margin-bottom:36px;text-align:center;">PRE-PUBLIC ACCESS · ENTER ACCESS CODE</div>
   <div style="display:flex;gap:0;margin-bottom:12px;max-width:360px;width:100%;">
     <input id="cr-gate-inp" type="password" placeholder="Access code" autocomplete="off"
