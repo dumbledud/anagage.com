@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANAGAGE Dev Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Special+Elite&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0f0e0b;
+  --paper: #f0ead8;
+  --aged: #e8dfc8;
+  --redact: #1a1a1a;
+  --red: #c0392b;
+  --red-dim: #8b1a12;
+  --stamp-green: #2d5a3d;
+  --gold: #b8922a;
+  --evidence: #2c3e50;
+  --highlight: #f9e04b;
+  --wire: #6b6050;
+  --teal: #1e6a78;
+  --purple: #5a3a8a;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--ink);
+  color: var(--paper);
+  font-family: 'Libre Baskerville', Georgia, serif;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.35;
+}
+
+/* ── HERO ── */
+.hero {
+  min-height: 60vh;
+  background-color: var(--ink);
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(240,234,216,0.025) 28px, rgba(240,234,216,0.025) 29px),
+    radial-gradient(ellipse at 20% 50%, rgba(192,57,43,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(184,146,42,0.03) 0%, transparent 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(42px, 8vw, 80px);
+  font-weight: 900;
+  line-height: 0.9;
+  text-align: center;
+  letter-spacing: -2px;
+  color: var(--paper);
+  margin-bottom: 20px;
+}
+
+.hero-subtitle {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-align: center;
+}
+
+/* ── CONTENT ── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 5vw, 48px);
+  font-weight: 700;
+  color: var(--paper);
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--gold);
+}
+
+/* ── CARD GRID ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 60px;
+}
+
+.dev-card {
+  background: #1a1814;
+  border: 1px solid #3a3228;
+  padding: 32px;
+  position: relative;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.dev-card:hover {
+  background: #232017;
+  border-color: #5a4e3d;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.dev-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--gold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
+}
+
+.dev-card:hover::before { transform: scaleX(1); }
+
+.card-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 12px;
+  display: block;
+}
+
+.card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--paper);
+  margin-bottom: 12px;
+}
+
+.card-description {
+  font-size: 14px;
+  color: #8a7d6a;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.card-link {
+  display: inline-block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid var(--gold);
+  transition: all 0.2s ease;
+}
+
+.card-link:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.card-status {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #5a4e3d;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #3a3228;
+  display: block;
+}
+
+.status-active {
+  color: var(--stamp-green);
+}
+
+.status-pending {
+  color: var(--wire);
+}
+
+/* ── CLOSING ── */
+.closing {
+  text-align: center;
+  padding: 60px 24px;
+  background: var(--ink);
+  border-top: 1px solid #3a3228;
+}
+
+.closing-text {
+  font-size: 14px;
+  color: #8a7d6a;
+  margin-bottom: 20px;
+}
+
+.back-link {
+  display: inline-block;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-decoration: none;
+  border: 1px solid var(--gold);
+  padding: 10px 20px;
+  transition: all 0.2s ease;
+}
+
+.back-link:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 700px) {
+  .card-grid { grid-template-columns: 1fr; }
+  .container { padding: 40px 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1 class="hero-title">Dev Lab</h1>
+  <p class="hero-subtitle">EXPERIMENTAL BUILDS & PROTOTYPES</p>
+</div>
+
+<div class="container">
+  <h2 class="section-title">Active Experiments</h2>
+
+  <div class="card-grid">
+    <div class="dev-card">
+      <span class="card-label">Steelman / Common Ground Finder</span>
+      <h3 class="card-title">Steelman Super Edition</h3>
+      <p class="card-description">An interactive exploration tool designed to help players understand different perspectives and find common ground through thoughtful gameplay mechanics.</p>
+      <a href="/steelman/" class="card-link">Launch →</a>
+      <span class="card-status status-active">Active</span>
+    </div>
+
+    <div class="dev-card">
+      <span class="card-label">Prototype</span>
+      <h3 class="card-title">Joy Engine</h3>
+      <p class="card-description">An experimental framework for creating joyful interactive experiences. Currently in development.</p>
+      <span class="card-status status-pending">Coming Soon</span>
+    </div>
+
+    <div class="dev-card">
+      <span class="card-label">Game</span>
+      <h3 class="card-title">Black Mo Fishing Game</h3>
+      <p class="card-description">A fishing simulation game with adaptive gameplay. Under development and testing phase.</p>
+      <span class="card-status status-pending">Coming Soon</span>
+    </div>
+
+    <div class="dev-card">
+      <span class="card-label">World Building</span>
+      <h3 class="card-title">Marvin Creek Depot</h3>
+      <p class="card-description">An immersive world-building experience exploring narrative and environment design. In active development.</p>
+      <span class="card-status status-pending">Coming Soon</span>
+    </div>
+
+    <div class="dev-card">
+      <span class="card-label">Research</span>
+      <h3 class="card-title">ANAGAGE Synthesis</h3>
+      <p class="card-description">Comprehensive synthesis documentation covering musical copyright, AI interaction, and collaborative frameworks. Knowledge base in progress.</p>
+      <span class="card-status status-pending">Coming Soon</span>
+    </div>
+
+    <div class="dev-card">
+      <span class="card-label">Research</span>
+      <h3 class="card-title">Shadow Work Integration</h3>
+      <p class="card-description">Detailed research on shadow work theory and its applications within the ANAGAGE framework. Documentation and analysis in development.</p>
+      <span class="card-status status-pending">Coming Soon</span>
+    </div>
+  </div>
+</div>
+
+<div class="closing">
+  <p class="closing-text">These experimental builds represent active development work within the ANAGAGE ecosystem.</p>
+  <a href="/" class="back-link">← Back to Main</a>
+</div>
+
+</body>
+</html>
