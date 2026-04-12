@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Joy Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0f0f13;
+    --bg-secondary: #16161e;
+    --bg-tertiary: #1e1e2a;
+    --bg-card: #1a1a24;
+    --border: #2a2a3a;
+    --text-primary: #e8e8f0;
+    --text-secondary: #9090a8;
+    --text-muted: #5a5a72;
+
+    /* Comedy: amber/gold */
+    --comedy-primary: #f59e0b;
+    --comedy-secondary: #d97706;
+    --comedy-glow: rgba(245, 158, 11, 0.15);
+    --comedy-subtle: rgba(245, 158, 11, 0.08);
+    --comedy-border: rgba(245, 158, 11, 0.3);
+
+    /* Music: violet/purple */
+    --music-primary: #8b5cf6;
+    --music-secondary: #7c3aed;
+    --music-glow: rgba(139, 92, 246, 0.15);
+    --music-subtle: rgba(139, 92, 246, 0.08);
+    --music-border: rgba(139, 92, 246, 0.3);
+
+    --accent: var(--comedy-primary);
+    --accent-glow: var(--comedy-glow);
+    --accent-subtle: var(--comedy-subtle);
+    --accent-border: var(--comedy-border);
+
+    --sidebar-width: 280px;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-shrink: 0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--comedy-primary), var(--music-primary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .tagline {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    letter-spacing: 0.3px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-ghost {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
+
+  .sidebar-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ─── LAYOUT ─── */
+  .app-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    height: calc(100vh - 60px);
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transition: margin-left 0.3s ease;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar.collapsed {
+    margin-left: calc(-1 * var(--sidebar-width));
+  }
+
+  .sidebar-inner { padding: 20px 16px; display: flex; flex-direction: column; gap: 20px; }
+
+  .sidebar-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .sidebar-group { display: flex; flex-direction: column; gap: 8px; }
+
+  label.field-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+    display: block;
+  }
+
+  .field-input {
+    width: 100%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 13px;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-subtle); }
+
+  select.field-input {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b88' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+
+  .api-key-wrap { position: relative; }
+  .api-key-wrap input { padding-right: 36px; font-family: monospace; font-size: 12px; }
+  .toggle-key-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px;
+  }
+  .toggle-key-btn:hover { color: var(--text-primary); }
+
+  .provider-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+  }
+  .provider-tab {
+    flex: 1;
+    padding: 6px 4px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-weight: 500;
+    text-align: center;
+  }
+  .provider-tab.active {
+    background: var(--bg-secondary);
+    color: var(--accent);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* Corpus Section */
+  .corpus-section {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .toggle-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .toggle-slider:before {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    left: 2px; top: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--accent-subtle); border-color: var(--accent); }
+  .toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); background: var(--accent); }
+
+  .corpus-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  .phase-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+
+  /* ─── MAIN ─── */
+  .main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* ─── MODE TABS ─── */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px;
+    width: fit-content;
+    align-self: flex-start;
+  }
+
+  .mode-tab {
+    padding: 9px 28px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 7px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mode-tab.active.comedy-tab {
+    background: var(--comedy-subtle);
+    color: var(--comedy-primary);
+    box-shadow: 0 0 0 1px var(--comedy-border);
+  }
+  .mode-tab.active.music-tab {
+    background: var(--music-subtle);
+    color: var(--music-primary);
+    box-shadow: 0 0 0 1px var(--music-border);
+  }
+  .mode-tab:not(.active):hover { color: var(--text-primary); }
+
+  /* ─── PROMPT AREA ─── */
+  .prompt-section { display: flex; flex-direction: column; gap: 8px; }
+
+  .prompt-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    min-height: 100px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    padding: 14px 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+  }
+  .prompt-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-subtle);
+  }
+  .prompt-textarea::placeholder { color: var(--text-muted); }
+
+  .prompt-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ─── STYLE SELECTOR ─── */
+  .style-section { display: flex; flex-direction: column; gap: 10px; }
+
+  .style-section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .style-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+  }
+
+  .style-card {
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .style-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+  .style-card.selected.comedy-card {
+    border-color: var(--comedy-primary);
+    background: var(--comedy-subtle);
+    box-shadow: 0 0 16px var(--comedy-glow), 0 0 0 1px var(--comedy-border);
+    transform: translateY(-1px);
+  }
+  .style-card.selected.music-card {
+    border-color: var(--music-primary);
+    background: var(--music-subtle);
+    box-shadow: 0 0 16px var(--music-glow), 0 0 0 1px var(--music-border);
+    transform: translateY(-1px);
+  }
+
+  .card-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+  .card-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .card-descriptor {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .card-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .selected-check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .style-card.selected.comedy-card .selected-check { opacity: 1; background: var(--comedy-primary); color: #000; }
+  .style-card.selected.music-card .selected-check { opacity: 1; background: var(--music-primary); color: #fff; }
+
+  /* Fusion card: spans full width */
+  .fusion-card { grid-column: 1 / -1; }
+
+  .fusion-artists {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .fusion-artist-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: var(--music-subtle);
+    color: var(--music-primary);
+    border: 1px solid var(--music-border);
+    font-weight: 600;
+  }
+
+  /* ─── GENERATE BUTTON ─── */
+  .generate-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-generate {
+    padding: 13px 36px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: 0.3px;
+  }
+  .btn-generate.comedy-btn {
+    background: linear-gradient(135deg, var(--comedy-primary), var(--comedy-secondary));
+    color: #000;
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+  }
+  .btn-generate.comedy-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(245, 158, 11, 0.45); }
+  .btn-generate.music-btn {
+    background: linear-gradient(135deg, var(--music-primary), var(--music-secondary));
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+  }
+  .btn-generate.music-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(139, 92, 246, 0.45); }
+  .btn-generate:active:not(:disabled) { transform: translateY(0); }
+  .btn-generate:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
+
+  .btn-regenerate {
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-regenerate.visible { display: flex; }
+  .btn-regenerate:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-regenerate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .kbd-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-secondary);
+  }
+
+  /* ─── SPINNER ─── */
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(0,0,0,0.25);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+    flex-shrink: 0;
+  }
+  .btn-generate.loading .spinner { display: block; }
+  .btn-generate.loading .btn-icon { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .music-btn .spinner { border-color: rgba(255,255,255,0.25); border-top-color: #fff; }
+
+  /* ─── LOADING INDICATOR ─── */
+  .loading-indicator {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+  .loading-indicator.visible { display: flex; }
+  .dots span {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%, 80%, 100% { transform: scale(0.5); opacity: 0.3; } 40% { transform: scale(1); opacity: 1; } }
+
+  /* ─── OUTPUT AREA ─── */
+  .output-section {
+    display: none;
+    flex-direction: column;
+    gap: 0;
+    animation: fadeIn 0.35s ease;
+  }
+  .output-section.visible { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .output-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .output-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .output-template-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+  }
+  .comedy-badge { background: var(--comedy-subtle); color: var(--comedy-primary); border: 1px solid var(--comedy-border); }
+  .music-badge { background: var(--music-subtle); color: var(--music-primary); border: 1px solid var(--music-border); }
+
+  .output-timestamp { font-size: 11px; color: var(--text-muted); }
+
+  .output-actions { display: flex; gap: 8px; }
+
+  .btn-action {
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .btn-action:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-action.copied { border-color: #22c55e !important; color: #22c55e !important; }
+
+  .output-body {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 26px 30px;
+    line-height: 1.85;
+    font-size: 15px;
+  }
+
+  .output-body h1, .output-body h2, .output-body h3 {
+    color: var(--accent);
+    margin-bottom: 12px;
+    margin-top: 24px;
+    font-weight: 700;
+  }
+  .output-body h1:first-child, .output-body h2:first-child, .output-body h3:first-child { margin-top: 0; }
+  .output-body h1 { font-size: 22px; }
+  .output-body h2 { font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .output-body h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .output-body p { margin-bottom: 14px; color: var(--text-primary); }
+  .output-body em { color: var(--text-secondary); }
+  .output-body strong { color: var(--accent); }
+  .output-body blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 4px 16px;
+    margin: 16px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .output-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* ─── ERROR STATE ─── */
+  .error-msg {
+    display: none;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    color: #fca5a5;
+    font-size: 14px;
+    line-height: 1.6;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .error-msg.visible { display: flex; }
+  .error-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  #errorText { white-space: pre-line; }
+
+  /* ─── HISTORY DRAWER ─── */
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    backdrop-filter: blur(3px);
+  }
+  .drawer-overlay.open { opacity: 1; pointer-events: all; }
+
+  .history-drawer {
+    position: fixed;
+    right: 0; top: 0; bottom: 0;
+    width: 460px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border);
+    z-index: 201;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+  }
+  .history-drawer.open { transform: translateX(0); }
+
+  .drawer-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .drawer-title { font-size: 16px; font-weight: 700; }
+
+  .drawer-close {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .drawer-close:hover { border-color: #ef4444; color: #ef4444; }
+
+  .drawer-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  .history-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .history-item:hover { border-color: var(--accent); transform: translateX(-2px); }
+
+  .history-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .history-item-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .history-item-time { font-size: 11px; color: var(--text-muted); }
+
+  .history-item-topic {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-item-preview {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 5px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.5;
+  }
+
+  .drawer-empty {
+    text-align: center;
+    padding: 50px 20px;
+    color: var(--text-muted);
+  }
+  .drawer-empty .empty-icon { font-size: 44px; margin-bottom: 14px; }
+  .drawer-empty p { font-size: 14px; line-height: 1.7; }
+
+  .drawer-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  .btn-danger-ghost {
+    padding: 7px 14px;
+    background: none;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: rgba(239, 68, 68, 0.7);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-danger-ghost:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.08); }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a50; }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 680px) {
+    .main { padding: 16px; }
+    .history-drawer { width: 94vw; }
+    .style-cards { grid-template-columns: 1fr; }
+    .kbd-hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Settings">☰</button>
+    <div>
+      <div class="logo">⚡ The Joy Engine</div>
+      <div class="tagline">Your life, made legendary</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <button class="btn-ghost" id="historyBtn">📜 Past Creations</button>
+  </div>
+</header>
+
+<!-- APP BODY -->
+<div class="app-body">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+
+      <!-- AI Provider -->
+      <div>
+        <div class="sidebar-section-title">AI Provider</div>
+        <div class="sidebar-group">
+          <div class="provider-tabs">
+            <button class="provider-tab active" data-provider="claude">Claude</button>
+            <button class="provider-tab" data-provider="openai">OpenAI</button>
+            <button class="provider-tab" data-provider="ollama">Ollama</button>
+          </div>
+
+          <!-- Claude settings -->
+          <div id="claude-settings">
+            <label class="field-label">API Key</label>
+            <div class="api-key-wrap">
+              <input type="password" class="field-input" id="claudeApiKey" placeholder="sk-ant-..." autocomplete="off">
+              <button class="toggle-key-btn" onclick="toggleKeyVis('claudeApiKey', this)" title="Show/hide key">👁</button>
+            </div>
+            <label class="field-label" style="margin-top:8px">Model</label>
+            <select class="field-input" id="claudeModel">
+              <option value="claude-opus-4-6">claude-opus-4-6 ✦ Best</option>
+              <option value="claude-sonnet-4-6" selected>claude-sonnet-4-6 ✦ Fast</option>
+              <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 ✦ Fastest</option>
+            </select>
+          </div>
+
+          <!-- OpenAI settings -->
+          <div id="openai-settings" style="display:none">
+            <label class="field-label">API Key</label>
+            <div class="api-key-wrap">
+              <input type="password" class="field-input" id="openaiApiKey" placeholder="sk-..." autocomplete="off">
+              <button class="toggle-key-btn" onclick="toggleKeyVis('openaiApiKey', this)" title="Show/hide key">👁</button>
+            </div>
+            <label class="field-label" style="margin-top:8px">Model</label>
+            <select class="field-input" id="openaiModel">
+              <option value="gpt-4o" selected>gpt-4o ✦ Best</option>
+              <option value="gpt-4o-mini">gpt-4o-mini ✦ Fast</option>
+              <option value="gpt-4-turbo">gpt-4-turbo</option>
+            </select>
+          </div>
+
+          <!-- Ollama settings -->
+          <div id="ollama-settings" style="display:none">
+            <label class="field-label">Ollama URL</label>
+            <input type="text" class="field-input" id="ollamaUrl" placeholder="http://localhost:11434" value="http://localhost:11434">
+            <label class="field-label" style="margin-top:8px">Model</label>
+            <select class="field-input" id="ollamaModel">
+              <option value="llama3.2" selected>llama3.2</option>
+              <option value="mistral">mistral</option>
+              <option value="phi3">phi3</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corpus -->
+      <div>
+        <div class="sidebar-section-title">Personal Corpus</div>
+        <div class="corpus-section">
+          <span class="phase-badge">PHASE 2</span>
+          <div class="toggle-row">
+            <span class="toggle-label">Pull from my history</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="corpusToggle" disabled>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="corpus-badge">Coming soon — load a folder of your personal notes &amp; anecdotes to enable auto-context.</div>
+        </div>
+      </div>
+
+      <!-- About -->
+      <div style="padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
+        <div class="sidebar-section-title" style="margin-bottom: 6px">What is this?</div>
+        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.65;">
+          The Joy Engine transforms your raw life material — the messy, the absurd, the hard — into comedy bits and original songs written about you, specifically.
+        </p>
+        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.65; margin-top: 8px;">
+          Give it something real. It gives it back legendary.
+        </p>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main" id="mainContent">
+
+    <!-- MODE TABS -->
+    <div class="mode-tabs">
+      <button class="mode-tab comedy-tab active" id="comedyTab">🎭 Comedy</button>
+      <button class="mode-tab music-tab" id="musicTab">🎵 Music</button>
+    </div>
+
+    <!-- PROMPT INPUT -->
+    <div class="prompt-section">
+      <div class="prompt-label">What's the raw material?</div>
+      <textarea
+        class="prompt-textarea"
+        id="promptInput"
+        placeholder="What happened? Give me the raw material. A situation, a frustration, a moment, a person, a thing that went sideways — the more specific, the better the output. Don't sanitize it."
+        rows="4"
+      ></textarea>
+      <div class="prompt-hint">💡 Specificity is everything — vague in, generic out. Real in, legendary out.</div>
+    </div>
+
+    <!-- STYLE SELECTOR: COMEDY -->
+    <div class="style-section" id="comedyStyleSection">
+      <div class="style-section-label">Choose the comedic architecture</div>
+      <div class="style-cards" id="comedyCards">
+
+        <div class="style-card comedy-card" data-style="chappelle">
+          <div class="selected-check">✓</div>
+          <span class="card-icon">🎤</span>
+          <div class="card-name">Dave Chappelle</div>
+          <div class="card-descriptor">Social Truth → Absurdity → Callback</div>
+          <div class="card-desc">Long wind-up rooted in real social observation. Weaves in personal vulnerability, finds the systemic absurdity underneath, ends with a callback that reframes the whole thing. Moral surprise at the end.</div>
+        </div>
+
+        <div class="style-card comedy-card" data-style="segura">
+          <div class="selected-check">✓</div>
+          <span class="card-icon">😐</span>
+          <div class="card-name">Tom Segura</div>
+          <div class="card-descriptor">Deadpan → Reversal → Flat Kicker</div>
+          <div class="card-desc">Starts deadpan. Escalates specificity until it's uncomfortably real. Then a "wait, actually…" reversal that implicates yourself. No big punchline — just a flat kicker that lands like a shrug.</div>
+        </div>
+
+        <div class="style-card comedy-card" data-style="wong">
+          <div class="selected-check">✓</div>
+          <span class="card-icon">💥</span>
+          <div class="card-name">Ali Wong</div>
+          <div class="card-descriptor">Chaos → Subversion → Victory</div>
+          <div class="card-desc">Domestic or family chaos premise. Raw honesty about what people actually think. A confession that sounds scandalous but makes perfect moral sense. Triumphant callback.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- STYLE SELECTOR: MUSIC (hidden by default) -->
+    <div class="style-section" id="musicStyleSection" style="display:none">
+      <div class="style-section-label">Your signature sound</div>
+      <div class="style-cards">
+
+        <div class="style-card music-card fusion-card selected" data-style="fusion">
+          <div class="selected-check">✓</div>
+          <span class="card-icon">🎸🎷🎻</span>
+          <div class="card-name">The Fusion</div>
+          <div class="card-descriptor">Forrest Frank × Bruno Mars × Lindsey Stirling</div>
+          <div class="card-desc">
+            Joyful Christian sincerity meets smooth R&amp;B swagger meets cinematic violin drama.
+            Verse grounds you in real, specific life. Pre-chorus builds tension. Chorus releases it all — anthemic and hopeful.
+            Bridge goes orchestral and introspective. Final chorus brings it home triumphant.
+          </div>
+          <div class="fusion-artists">
+            <span class="fusion-artist-badge">🙏 Forrest Frank — Joyful Sincerity</span>
+            <span class="fusion-artist-badge">🎷 Bruno Mars — Smooth Swagger</span>
+            <span class="fusion-artist-badge">🎻 Lindsey Stirling — Cinematic Drama</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- GENERATE ROW -->
+    <div class="generate-row">
+      <button class="btn-generate comedy-btn" id="generateBtn">
+        <span class="spinner"></span>
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">Generate Bit</span>
+      </button>
+      <button class="btn-regenerate" id="regenerateBtn">
+        🔄 Regenerate
+      </button>
+      <div class="kbd-hint">
+        <kbd>⌘</kbd><kbd>↵</kbd> to generate
+      </div>
+    </div>
+
+    <!-- ERROR STATE -->
+    <div class="error-msg" id="errorMsg">
+      <span class="error-icon">⚠️</span>
+      <span id="errorText">Something went wrong. Check your API key and try again.</span>
+    </div>
+
+    <!-- LOADING INDICATOR -->
+    <div class="loading-indicator" id="loadingIndicator">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <span id="loadingText">Writing your bit…</span>
+    </div>
+
+    <!-- OUTPUT -->
+    <div class="output-section" id="outputSection">
+      <div class="output-header">
+        <div class="output-meta">
+          <span class="output-template-badge comedy-badge" id="outputBadge">Chappelle</span>
+          <span class="output-timestamp" id="outputTimestamp"></span>
+        </div>
+        <div class="output-actions">
+          <button class="btn-action" id="copyBtn">📋 Copy</button>
+        </div>
+      </div>
+      <div class="output-body" id="outputBody"></div>
+    </div>
+
+    <!-- SPACER -->
+    <div style="height: 48px; flex-shrink: 0;"></div>
+
+  </main>
+</div>
+
+<!-- HISTORY DRAWER OVERLAY -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<div class="history-drawer" id="historyDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">📜 Past Creations</div>
+    <button class="drawer-close" id="drawerClose" title="Close">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-footer">
+    <button class="btn-danger-ghost" id="clearHistoryBtn">🗑 Clear All History</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+const STATE = {
+  mode: 'comedy',
+  selectedStyle: 'chappelle',
+  provider: 'claude',
+  isLoading: false,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STYLE CONFIGS
+// ─────────────────────────────────────────────────────────────────────────────
+const STYLES = {
+  chappelle: {
+    name: 'Dave Chappelle',
+    emoji: '🎤',
+    mode: 'comedy',
+    templateInstruction: `Use Dave Chappelle's structure: open with a real social observation, weave in personal vulnerability, find the systemic absurdity underneath, then end with a callback that reframes the whole thing. The punchline should feel earned, not cheap. Long wind-up is good. Storytelling pace. Moral surprise at the end.`,
+  },
+  segura: {
+    name: 'Tom Segura',
+    emoji: '😐',
+    mode: 'comedy',
+    templateInstruction: `Use Tom Segura's structure: start deadpan, escalate the specificity until it's uncomfortably real, then reverse with a "wait, actually..." moment that implicates yourself. End flat — no big punchline, just a kicker that lands like a shrug.`,
+  },
+  wong: {
+    name: 'Ali Wong',
+    emoji: '💥',
+    mode: 'comedy',
+    templateInstruction: `Use Ali Wong's structure: start with a domestic or family premise, subvert it with raw honesty about what people (mothers, spouses, the exhausted and underpaid) actually think, include a confession that sounds scandalous but makes perfect moral sense, end with a callback that feels like victory.`,
+  },
+  fusion: {
+    name: 'Forrest Frank × Bruno Mars × Lindsey Stirling',
+    emoji: '🎸',
+    mode: 'music',
+    templateInstruction: `Write original song lyrics using this fusion structure: Forrest Frank's joyful sincerity + Bruno Mars's smooth confidence + Lindsey Stirling's cinematic drama. Verse is grounded and personal (pull specific details from the situation). Pre-chorus builds emotional tension and lift. Chorus is anthemic and hopeful — full release. Bridge should feel like an orchestral break — introspective before the final triumphant chorus. End with a Final Chorus that's bigger than the first.`,
+  },
+};
+
+const CHRIS_CONTEXT = `Chris Comiskey is a defense contractor employee and father of multiple kids who has been fighting a multi-year federal civil rights lawsuit against his HOA and local government — where his family has been targeted and harassed for standing up for themselves. He's been in what often feels like a Sisyphean battle that most people would've quit years ago. He has a dark, honest sense of humor and can absolutely handle the truth about his own situation. He wants material that's specific and real, not sanitized or motivational-poster generic. He appreciates when comedy finds what's genuinely funny about the painful, the absurd, and the exhausting.`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  renderHistory();
+  bindEvents();
+  // Select default
+  document.querySelector('[data-style="chappelle"]')?.classList.add('selected');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACCENT
+// ─────────────────────────────────────────────────────────────────────────────
+function updateAccent() {
+  const root = document.documentElement;
+  const isComedy = STATE.mode === 'comedy';
+  root.style.setProperty('--accent', isComedy ? 'var(--comedy-primary)' : 'var(--music-primary)');
+  root.style.setProperty('--accent-glow', isComedy ? 'var(--comedy-glow)' : 'var(--music-glow)');
+  root.style.setProperty('--accent-subtle', isComedy ? 'var(--comedy-subtle)' : 'var(--music-subtle)');
+  root.style.setProperty('--accent-border', isComedy ? 'var(--comedy-border)' : 'var(--music-border)');
+
+  const btn = document.getElementById('generateBtn');
+  btn.className = `btn-generate ${isComedy ? 'comedy-btn' : 'music-btn'}`;
+  document.getElementById('loadingText').textContent = isComedy ? 'Writing your bit…' : 'Composing your song…';
+  document.querySelector('#generateBtn .btn-text').textContent = isComedy ? 'Generate Bit' : 'Write Song';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────────────────────────────────────
+function bindEvents() {
+  document.getElementById('sidebarToggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  });
+
+  document.getElementById('comedyTab').addEventListener('click', () => switchMode('comedy'));
+  document.getElementById('musicTab').addEventListener('click', () => switchMode('music'));
+
+  document.querySelectorAll('.provider-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchProvider(btn.dataset.provider));
+  });
+
+  document.querySelectorAll('.style-card').forEach(card => {
+    card.addEventListener('click', () => selectStyle(card.dataset.style));
+  });
+
+  document.getElementById('generateBtn').addEventListener('click', generate);
+  document.getElementById('regenerateBtn').addEventListener('click', generate);
+
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
+    if (e.key === 'Escape') closeDrawer();
+  });
+
+  document.getElementById('historyBtn').addEventListener('click', openDrawer);
+  document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+  document.getElementById('drawerOverlay').addEventListener('click', closeDrawer);
+  document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+  document.getElementById('copyBtn').addEventListener('click', copyOutput);
+
+  // Save on change
+  ['claudeApiKey', 'openaiApiKey', 'ollamaUrl', 'claudeModel', 'openaiModel', 'ollamaModel'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', saveSettings);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODE SWITCH
+// ─────────────────────────────────────────────────────────────────────────────
+function switchMode(mode) {
+  STATE.mode = mode;
+
+  document.getElementById('comedyTab').classList.toggle('active', mode === 'comedy');
+  document.getElementById('musicTab').classList.toggle('active', mode === 'music');
+  document.getElementById('comedyStyleSection').style.display = mode === 'comedy' ? '' : 'none';
+  document.getElementById('musicStyleSection').style.display = mode === 'music' ? '' : 'none';
+
+  if (mode === 'comedy') {
+    STATE.selectedStyle = 'chappelle';
+    document.querySelectorAll('.comedy-card').forEach(c => c.classList.remove('selected'));
+    document.querySelector('[data-style="chappelle"]')?.classList.add('selected');
+  } else {
+    STATE.selectedStyle = 'fusion';
+    document.querySelectorAll('.music-card').forEach(c => c.classList.remove('selected'));
+    document.querySelector('[data-style="fusion"]')?.classList.add('selected');
+  }
+
+  hideOutput();
+  hideError();
+  document.getElementById('regenerateBtn').classList.remove('visible');
+  updateAccent();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROVIDER SWITCH
+// ─────────────────────────────────────────────────────────────────────────────
+function switchProvider(provider) {
+  STATE.provider = provider;
+  document.querySelectorAll('.provider-tab').forEach(b => b.classList.toggle('active', b.dataset.provider === provider));
+  ['claude', 'openai', 'ollama'].forEach(p => {
+    document.getElementById(`${p}-settings`).style.display = p === provider ? '' : 'none';
+  });
+  saveSettings();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STYLE SELECTION
+// ─────────────────────────────────────────────────────────────────────────────
+function selectStyle(styleKey) {
+  if (!STYLES[styleKey]) return;
+  STATE.selectedStyle = styleKey;
+  const modeClass = STYLES[styleKey].mode === 'comedy' ? '.comedy-card' : '.music-card';
+  document.querySelectorAll(modeClass).forEach(c => c.classList.remove('selected'));
+  document.querySelector(`[data-style="${styleKey}"]`)?.classList.add('selected');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY TOGGLE
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleKeyVis(inputId, btn) {
+  const el = document.getElementById(inputId);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '👁' : '🙈';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────────────
+function saveSettings() {
+  try {
+    localStorage.setItem('joy-engine-settings', JSON.stringify({
+      provider: STATE.provider,
+      claudeApiKey: document.getElementById('claudeApiKey').value,
+      openaiApiKey: document.getElementById('openaiApiKey').value,
+      ollamaUrl: document.getElementById('ollamaUrl').value,
+      claudeModel: document.getElementById('claudeModel').value,
+      openaiModel: document.getElementById('openaiModel').value,
+      ollamaModel: document.getElementById('ollamaModel').value,
+    }));
+  } catch(e) {}
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem('joy-engine-settings');
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.provider) switchProvider(s.provider);
+    if (s.claudeApiKey) document.getElementById('claudeApiKey').value = s.claudeApiKey;
+    if (s.openaiApiKey) document.getElementById('openaiApiKey').value = s.openaiApiKey;
+    if (s.ollamaUrl) document.getElementById('ollamaUrl').value = s.ollamaUrl;
+    if (s.claudeModel) document.getElementById('claudeModel').value = s.claudeModel;
+    if (s.openaiModel) document.getElementById('openaiModel').value = s.openaiModel;
+    if (s.ollamaModel) document.getElementById('ollamaModel').value = s.ollamaModel;
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERATE
+// ─────────────────────────────────────────────────────────────────────────────
+async function generate() {
+  if (STATE.isLoading) return;
+
+  const topic = document.getElementById('promptInput').value.trim();
+  if (!topic) {
+    const ta = document.getElementById('promptInput');
+    ta.style.borderColor = 'rgba(239,68,68,0.6)';
+    ta.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.12)';
+    ta.focus();
+    setTimeout(() => { ta.style.borderColor = ''; ta.style.boxShadow = ''; }, 1800);
+    return;
+  }
+
+  const style = STYLES[STATE.selectedStyle];
+  if (!style) { showError('Please select a style template.'); return; }
+
+  const { systemPrompt, userMessage } = buildPrompts(topic, style);
+
+  STATE.isLoading = true;
+  setLoading(true);
+  hideOutput();
+  hideError();
+
+  try {
+    const content = await callAI(systemPrompt, userMessage);
+    if (!content) throw new Error('Received empty response from AI.');
+    showOutput(content);
+    saveToHistory({ topic, style: STATE.selectedStyle, mode: STATE.mode, content });
+    document.getElementById('regenerateBtn').classList.add('visible');
+  } catch(err) {
+    showError(err.message || 'Something went wrong. Check your API key and try again.');
+  } finally {
+    STATE.isLoading = false;
+    setLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROMPT BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
+function buildPrompts(topic, style) {
+  let systemPrompt, userMessage;
+
+  if (style.mode === 'comedy') {
+    systemPrompt = `You are a comedy writer creating a personalized stand-up bit for Chris Comiskey to enjoy (not to perform — just for himself). You have access to real events from Chris's life. Your job is to find what's genuinely funny about real painful, absurd, or frustrating things. You are not a therapist. You are a comedian.
+
+${style.templateInstruction}
+
+Chris's life context: ${CHRIS_CONTEXT}
+
+Write the complete bit in full — not an outline, not bullet points. A real, written stand-up bit that flows as if being told on stage. Use markdown sparingly. Make it feel real, not sanitized. It should be 300-600 words.`;
+
+    userMessage = `Here's the topic/situation: ${topic}`;
+
+  } else {
+    systemPrompt = `You are a songwriter creating original song lyrics for Chris Comiskey — personalized to his real life.
+
+${style.templateInstruction}
+
+Chris's life context: ${CHRIS_CONTEXT}
+
+Output format — use this exact markdown structure:
+
+**[Song Title]**
+
+*Verse 1:*
+[lyrics — grounded, personal, specific]
+
+*Pre-Chorus:*
+[lyrics — emotional lift, building tension]
+
+*Chorus:*
+[lyrics — anthemic, hopeful, full release]
+
+*Bridge:*
+[lyrics — introspective, turning point, cinematic]
+
+*Chorus (Final):*
+[lyrics — triumphant, bigger than the first]
+
+*[One-line note on vibe/arrangement]*
+
+Make the lyrics specific to Chris's actual situation. Pull real emotional truth from the material provided. Don't be generic. The chorus should be singable and memorable.`;
+
+    userMessage = `Here's what this song should be about: ${topic}`;
+  }
+
+  return { systemPrompt, userMessage };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI CALLS
+// ─────────────────────────────────────────────────────────────────────────────
+async function callAI(systemPrompt, userMessage) {
+  if (STATE.provider === 'claude') return callClaude(systemPrompt, userMessage);
+  if (STATE.provider === 'openai') return callOpenAI(systemPrompt, userMessage);
+  return callOllama(systemPrompt, userMessage);
+}
+
+async function callClaude(systemPrompt, userMessage) {
+  const apiKey = document.getElementById('claudeApiKey').value.trim();
+  if (!apiKey) throw new Error('Claude API key is missing. Open the Settings sidebar (☰) and add your key.');
+  const model = document.getElementById('claudeModel').value;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Claude error ${res.status}: ${err?.error?.message || res.statusText}`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text || '';
+}
+
+async function callOpenAI(systemPrompt, userMessage) {
+  const apiKey = document.getElementById('openaiApiKey').value.trim();
+  if (!apiKey) throw new Error('OpenAI API key is missing. Open the Settings sidebar (☰) and add your key.');
+  const model = document.getElementById('openaiModel').value;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`OpenAI error ${res.status}: ${err?.error?.message || res.statusText}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callOllama(systemPrompt, userMessage) {
+  const baseUrl = (document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434').replace(/\/$/, '');
+  const model = document.getElementById('ollamaModel').value;
+
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+        stream: false,
+      }),
+    });
+  } catch (fetchErr) {
+    throw new Error(
+      `Can't reach Ollama at ${baseUrl}. Two things to check:\n\n` +
+      `1. Ollama is running: open Terminal and run → ollama serve\n\n` +
+      `2. CORS is enabled: restart Ollama with browser access allowed:\n` +
+      `   OLLAMA_ORIGINS="*" ollama serve\n\n` +
+      `Without OLLAMA_ORIGINS set, browsers are blocked from talking to localhost.`
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(`Ollama error ${res.status}: Make sure Ollama is running and the model "${model}" is pulled (ollama pull ${model})`);
+  }
+  const data = await res.json();
+  return data.message?.content || '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function setLoading(isLoading) {
+  const btn = document.getElementById('generateBtn');
+  const regen = document.getElementById('regenerateBtn');
+  const indicator = document.getElementById('loadingIndicator');
+  btn.disabled = isLoading;
+  regen.disabled = isLoading;
+  indicator.classList.toggle('visible', isLoading);
+  if (isLoading) btn.classList.add('loading'); else btn.classList.remove('loading');
+}
+
+function showOutput(content) {
+  const style = STYLES[STATE.selectedStyle];
+  document.getElementById('outputBadge').textContent = `${style.emoji} ${style.name}`;
+  document.getElementById('outputBadge').className = `output-template-badge ${STATE.mode === 'comedy' ? 'comedy-badge' : 'music-badge'}`;
+  document.getElementById('outputTimestamp').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('outputBody').innerHTML = marked.parse(content);
+  document.getElementById('outputSection').classList.add('visible');
+  setTimeout(() => document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+}
+
+function hideOutput() { document.getElementById('outputSection').classList.remove('visible'); }
+
+function showError(msg) {
+  document.getElementById('errorText').textContent = msg;
+  document.getElementById('errorMsg').classList.add('visible');
+}
+
+function hideError() { document.getElementById('errorMsg').classList.remove('visible'); }
+
+function copyOutput() {
+  const text = document.getElementById('outputBody').innerText;
+  const btn = document.getElementById('copyBtn');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 Copy'; btn.classList.remove('copied'); }, 2200);
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    Object.assign(ta.style, { position: 'fixed', opacity: '0', top: '-9999px' });
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 Copy'; btn.classList.remove('copied'); }, 2200);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+let history = [];
+
+function saveToHistory(item) {
+  history.unshift({ ...item, id: Date.now(), ts: new Date().toISOString() });
+  if (history.length > 20) history = history.slice(0, 20);
+  try { localStorage.setItem('joy-engine-history', JSON.stringify(history)); } catch(e) {}
+}
+
+function loadHistoryFromStorage() {
+  try {
+    const raw = localStorage.getItem('joy-engine-history');
+    if (raw) history = JSON.parse(raw);
+  } catch(e) { history = []; }
+}
+
+function openDrawer() {
+  loadHistoryFromStorage();
+  renderHistory();
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('historyDrawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('historyDrawer').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderHistory() {
+  const body = document.getElementById('drawerBody');
+  if (history.length === 0) {
+    body.innerHTML = `<div class="drawer-empty"><div class="empty-icon">✨</div><p>No creations yet.<br>Hit Generate to make something legendary.</p></div>`;
+    return;
+  }
+  body.innerHTML = history.map(item => {
+    const style = STYLES[item.style];
+    const d = new Date(item.ts);
+    const timeStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' · ' +
+                    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const preview = item.content.replace(/[#*_`[\]]/g, '').substring(0, 130).trim() + '…';
+    const badgeClass = item.mode === 'comedy' ? 'comedy-badge' : 'music-badge';
+    const emoji = item.mode === 'comedy' ? '🎭' : '🎵';
+    return `
+      <div class="history-item" onclick="loadHistoryItem(${item.id})">
+        <div class="history-item-header">
+          <span class="history-item-badge ${badgeClass}">${emoji} ${style?.name || item.style}</span>
+          <span class="history-item-time">${timeStr}</span>
+        </div>
+        <div class="history-item-topic">${escHtml(item.topic)}</div>
+        <div class="history-item-preview">${escHtml(preview)}</div>
+      </div>`;
+  }).join('');
+}
+
+function loadHistoryItem(id) {
+  const item = history.find(h => h.id === id);
+  if (!item) return;
+  if (item.mode !== STATE.mode) switchMode(item.mode);
+  document.getElementById('promptInput').value = item.topic;
+  selectStyle(item.style);
+  showOutput(item.content);
+  document.getElementById('regenerateBtn').classList.add('visible');
+  closeDrawer();
+}
+
+function clearHistory() {
+  if (history.length === 0) return;
+  if (!confirm(`Clear all ${history.length} saved creation${history.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  history = [];
+  try { localStorage.removeItem('joy-engine-history'); } catch(e) {}
+  renderHistory();
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Load history into memory on start
+loadHistoryFromStorage();
+</script>
+</body>
+</html>
